@@ -2,10 +2,31 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_PWMServoDriver.h>
 
 #include <PS2X_lib.h>
 
 #include <pictures.h> //массивы изображений для дисплея
+
+//сервы
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); // called this way, it uses the default address 0x40
+#define SERVO_BUCKET_MIN  281
+#define SERVO_BUCKET_MAX  445
+#define SERVO_BUCKETUD_MIN  187
+#define SERVO_BUCKETUD_MAX  421
+#define SERVO_PLOW_MIN  320
+#define SERVO_PLOW_MAX  410
+#define SERVO_PLANT_MIN  320
+#define SERVO_PLANT_MAX  428
+
+#define SERVO_BUCKET_CH  7
+#define SERVO_BUCKETUD_CH 6
+#define SERVO_PLOW_CH  5
+#define SERVO_PLANT_CH 4
+
+#define DSERVO_const 5
+#define SERVO_FREQ 60
+#define SERVO_DELAY 7
 
 //Динамик
 #define BUZZER 11
@@ -43,7 +64,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define note_b 466
 
 //пауза
-#define MAXCOUNT_PAUSE 350  //350 = 30c
+#define MAXCOUNT_PAUSE 350*2  //350 = 30c
 
 //Режимы работы джойстика
 //- pressures = аналоговое считывание нажатия кнопок
@@ -86,9 +107,14 @@ Adafruit_SSD1306 display(OLED_RESET);
 int motorspeed = SPEED_MIN;
 int count_ADC = MAXCOUNT_ADC;
 unsigned int count_pause  = 0;
+int pulselen_bucket = 350;
+int pulselen_bucketud = 300;
+int pulselen_plow = SERVO_PLOW_MIN;
+int pulselen_plant = SERVO_PLANT_MIN;
 //char outstr[4];
 float mcu_voltage;
 unsigned char robo_state = state_notmove;
+unsigned char state_plow = 0;
 
 
 //Создание класса для джойстика
@@ -109,6 +135,13 @@ void setup() {
 
   pinMode(BUZZER, OUTPUT);
   noTone(BUZZER);
+
+  //Установка частоты ШИМ
+  pwm.begin();
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~60 Hz updates
+
+
+
   //Инициализация дисплея
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3D (for the 128x64)
   // init done
@@ -120,21 +153,22 @@ void setup() {
   // Clear the buffer.
   display.clearDisplay();
 
-
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
 
   //мелодия включения
-  beep(note_c, 400);
-  beep(note_e, 350);
-  beep(note_g, 150);
-  beep(note_b, 400);
-  noTone(BUZZER);
+    beep(note_c, 400);
+    beep(note_e, 350);
+    beep(note_g, 150);
+    beep(note_b, 400);
+    noTone(BUZZER);
 
   //Serial.begin(9600);
 
   //Настройка опорного напряжения для АЦП: внешний источник на выводе AREF
   analogReference(EXTERNAL);
+
+  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);
 }
 
 
@@ -156,23 +190,15 @@ void loop()
   if (mcu_voltage < MIN_MCU_VOLTAGE)
   {
     robo_state = state_tired;
-    beep(note_b, 400);
-    beep(note_g, 350);
-    beep(note_e, 150);
-    beep(note_c, 400);
-    noTone(BUZZER);
+      beep(note_b, 400);
+      beep(note_g, 350);
+      beep(note_e, 150);
+      beep(note_c, 400);
+      noTone(BUZZER);
 
   }
   else
   {
-    // Start нажат
-    if (ps2x.Button(PSB_START))
-    {
-      /* mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
-        dtostrf(mcu_voltage, 4, 2, outstr); //преобразование флоат в строку 4 символа в строке, 2 знака после запятой
-        PrintText(outstr, 5); //вывод значения напряжения на экран*/
-    }
-
     // ВВЕРХ нажато
     if (ps2x.Button(PSB_PAD_UP))
     {
@@ -211,19 +237,16 @@ void loop()
         {
           robo_state = state_pause;
           //мелодия
-          beep(note_g, 300);
-          beep(note_g, 150);
-          beep(note_f, 150);
-          beep(note_e, 150);
-          beep(note_a, 300);
-          noTone(BUZZER);
+            beep(note_g, 300);
+            beep(note_g, 150);
+            beep(note_f, 150);
+            beep(note_e, 150);
+            beep(note_a, 300);
+            noTone(BUZZER);
           count_pause++;
         }
       }
     }
-
-
-
 
     // ВПРАВО нажато
     if (ps2x.Button(PSB_PAD_RIGHT))
@@ -246,21 +269,51 @@ void loop()
 
     //vibrate = ps2x.Analog(PSAB_CROSS);  //Скорость вибрации устанавливаеться в зависимости от силы нажатия кнопки (X)
 
-    /*// L2 нажата
-      if (ps2x.ButtonPressed(PSB_L2))
+    // L2 нажата (плуг)
+    if (ps2x.ButtonPressed(PSB_L2))
+    {
+      count_pause = 0;
+      switch (state_plow)
       {
-      //PrintText("L2",2);
+        case 0:
+          {
+            state_plow++;
+            for (pulselen_plow = SERVO_PLOW_MIN; pulselen_plow < SERVO_PLOW_MAX; pulselen_plow ++)
+            {
+              pwm.setPWM(SERVO_PLOW_CH, 0, pulselen_plow);
+              delay(SERVO_DELAY);
+            }
+            break;
+          }
+        case 1:
+          {
+            state_plow--;
+            for (pulselen_plow = SERVO_PLOW_MAX; pulselen_plow > SERVO_PLOW_MIN; pulselen_plow --)
+            {
+              pwm.setPWM(SERVO_PLOW_CH, 0, pulselen_plow);
+              delay(SERVO_DELAY);
+            }
+            break;
+          }
+      }
+    }
+
+    if (ps2x.ButtonPressed(PSB_L1))
+    {
+      count_pause = 0;
+
+        pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MIN);
+        delay(300);
+      
+        pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);
+
       }
 
-      // L3 нажата
-      if (ps2x.Button(PSB_L1))
-      {
-
-      }*/
-
-    // R3 нажата
+    
+    // R1 нажата
     if (ps2x.Button(PSB_R1))
     {
+      count_pause = 0;
       if (motorspeed < (SPEED_MAX - Dspeed_const))
       {
         motorspeed = motorspeed + Dspeed_const;
@@ -271,34 +324,77 @@ void loop()
     // R2 нажата
     if (ps2x.Button(PSB_R2))
     {
-      if (motorspeed > SPEED_MIN)
+      count_pause = 0;
+      if (motorspeed > (SPEED_MIN + Dspeed_const))
       {
         motorspeed = motorspeed - Dspeed_const;
       }
-      else motorspeed = motorspeed;
+      else motorspeed = SPEED_MIN;
     }
+
+
+
+
+
 
     // Треугольник нажат
     if (ps2x.Button(PSB_TRIANGLE))
     {
+      count_pause = 0;
+      if (pulselen_bucketud > (SERVO_BUCKETUD_MIN + DSERVO_const))
+      {
+        pulselen_bucketud = pulselen_bucketud - DSERVO_const;
+        pwm.setPWM(SERVO_BUCKETUD_CH, 0, pulselen_bucketud);
+      }
+      else pulselen_bucketud = SERVO_BUCKETUD_MIN;
       robo_state = state_servoaction;
+      delay(SERVO_DELAY);
     }
+
 
     //Х нажат
     if (ps2x.Button(PSB_CROSS))
     {
+      count_pause = 0;
+      if (pulselen_bucketud < (SERVO_BUCKETUD_MAX - DSERVO_const))
+      {
+        pulselen_bucketud = pulselen_bucketud + DSERVO_const;
+        pwm.setPWM(SERVO_BUCKETUD_CH, 0, pulselen_bucketud);
+      }
+      else pulselen_bucketud = SERVO_BUCKETUD_MAX;
+
       robo_state = state_servoaction;
+      delay(SERVO_DELAY);
     }
+
     //Круг нажат
     if (ps2x.Button(PSB_CIRCLE))
     {
+      count_pause = 0;
+      if (pulselen_bucket < (SERVO_BUCKET_MAX - DSERVO_const))
+      {
+        pulselen_bucket = pulselen_bucket + DSERVO_const;
+        pwm.setPWM(SERVO_BUCKET_CH, 0, pulselen_bucket);
+      }
+      else pulselen_bucket = SERVO_BUCKET_MAX;
       robo_state = state_servoaction;
+      delay(SERVO_DELAY);
     }
 
     //Квадрат нажат
     if (ps2x.Button(PSB_SQUARE))
     {
+      count_pause = 0;
+      if (pulselen_bucket > (SERVO_BUCKET_MIN + DSERVO_const))
+      {
+        pulselen_bucket = pulselen_bucket - DSERVO_const;
+        pwm.setPWM(SERVO_BUCKET_CH, 0, pulselen_bucket);
+      }
+      else pulselen_bucket = SERVO_BUCKET_MIN;
+
+
       robo_state = state_servoaction;
+      delay(SERVO_DELAY);
     }
 
   }
@@ -368,6 +464,7 @@ void loop()
       }
   }
 }
+
 
 //Вывод слова на дисплей
 void PrintText(char STR[255], char textsize)

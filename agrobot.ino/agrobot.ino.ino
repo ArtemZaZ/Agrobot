@@ -8,6 +8,12 @@
 
 #include <pictures.h> //массивы изображений для дисплея
 
+//условие управляемого динамика
+/*#ifndef BEEP_ON
+  #define BEEP_ON
+  #endif*/
+
+
 //сервы
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); // called this way, it uses the default address 0x40
 #define SERVO_BUCKET_MIN  281
@@ -111,8 +117,7 @@ int pulselen_bucket = 350;
 int pulselen_bucketud = 300;
 int pulselen_plow = SERVO_PLOW_MIN;
 int pulselen_plant = SERVO_PLANT_MIN;
-//char outstr[4];
-float mcu_voltage;
+float mcu_voltage, mcu_current;
 unsigned char robo_state = state_notmove;
 unsigned char state_plow = 0;
 
@@ -140,8 +145,6 @@ void setup() {
   pwm.begin();
   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~60 Hz updates
 
-
-
   //Инициализация дисплея
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3D (for the 128x64)
   // init done
@@ -156,12 +159,16 @@ void setup() {
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
 
+#ifdef BEEP_ON
   //мелодия включения
-    beep(note_c, 400);
-    beep(note_e, 350);
-    beep(note_g, 150);
-    beep(note_b, 400);
-    noTone(BUZZER);
+  beep(note_c, 400);
+  beep(note_e, 350);
+  beep(note_g, 150);
+  beep(note_b, 400);
+  noTone(BUZZER);
+#else
+  beep(1, 700);
+#endif
 
   //Serial.begin(9600);
 
@@ -183,6 +190,9 @@ void loop()
     count_ADC = 0;
     mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
     //    dtostrf(mcu_voltage, 4, 2, outstr); //преобразование флоат в строку 4 символа в строке, 2 знака после запятой
+    /* mcu_current = analogRead(ADC_PIN_CURRENT)* UAREF / ADC_MAX;
+      Serial.println(mcu_voltage);
+      Serial.println(mcu_current);*/
   }
   else count_ADC++;
 
@@ -190,16 +200,21 @@ void loop()
   if (mcu_voltage < MIN_MCU_VOLTAGE)
   {
     robo_state = state_tired;
-      beep(note_b, 400);
-      beep(note_g, 350);
-      beep(note_e, 150);
-      beep(note_c, 400);
-      noTone(BUZZER);
+    
+#ifdef BEEP_ON
+    beep(note_b, 400);
+    beep(note_g, 350);
+    beep(note_e, 150);
+    beep(note_c, 400);
+    noTone(BUZZER);
+#else
+    beep(2, 200);
+#endif
 
   }
   else
   {
-    // ВВЕРХ нажато
+    // ВВЕРХ нажато (движение вперёд)
     if (ps2x.Button(PSB_PAD_UP))
     {
       SetSpeedRight(motorspeed);
@@ -208,7 +223,7 @@ void loop()
       count_pause = 0;
     }
 
-    //ВНИЗ нажато
+    //ВНИЗ нажато (движение назад)
     if (ps2x.Button(PSB_PAD_DOWN))
     {
       robo_state = state_goback;
@@ -236,19 +251,23 @@ void loop()
         if (count_pause == MAXCOUNT_PAUSE)
         {
           robo_state = state_pause;
+#ifdef BEEP_ON
           //мелодия
-            beep(note_g, 300);
-            beep(note_g, 150);
-            beep(note_f, 150);
-            beep(note_e, 150);
-            beep(note_a, 300);
-            noTone(BUZZER);
+          beep(note_g, 300);
+          beep(note_g, 150);
+          beep(note_f, 150);
+          beep(note_e, 150);
+          beep(note_a, 300);
+          noTone(BUZZER);
+#else
+          beep(3, 200);
+#endif
           count_pause++;
         }
       }
     }
 
-    // ВПРАВО нажато
+    // ВПРАВО нажато (поворот)
     if (ps2x.Button(PSB_PAD_RIGHT))
     {
       robo_state = state_turnright;
@@ -257,7 +276,7 @@ void loop()
       count_pause = 0;
     }
 
-    //ВЛЕВО нажато
+    //ВЛЕВО нажато (поворот)
     if (ps2x.Button(PSB_PAD_LEFT))
     {
       robo_state = state_turnleft;
@@ -298,19 +317,20 @@ void loop()
       }
     }
 
+    //L1 (картошка)
     if (ps2x.ButtonPressed(PSB_L1))
     {
       count_pause = 0;
 
-        pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MIN);
-        delay(300);
-      
-        pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);
+      pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MIN);
+      delay(300);
 
-      }
+      pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);
 
-    
-    // R1 нажата
+    }
+
+
+    // R1 нажата (увеличение скорости)
     if (ps2x.Button(PSB_R1))
     {
       count_pause = 0;
@@ -321,7 +341,7 @@ void loop()
       else motorspeed = SPEED_MAX;
     }
 
-    // R2 нажата
+    // R2 нажата (уменьшение скорости)
     if (ps2x.Button(PSB_R2))
     {
       count_pause = 0;
@@ -332,12 +352,7 @@ void loop()
       else motorspeed = SPEED_MIN;
     }
 
-
-
-
-
-
-    // Треугольник нажат
+    // Треугольник нажат (ковш вверх)
     if (ps2x.Button(PSB_TRIANGLE))
     {
       count_pause = 0;
@@ -352,7 +367,7 @@ void loop()
     }
 
 
-    //Х нажат
+    //Х нажат (ковш вниз)
     if (ps2x.Button(PSB_CROSS))
     {
       count_pause = 0;
@@ -367,7 +382,7 @@ void loop()
       delay(SERVO_DELAY);
     }
 
-    //Круг нажат
+    //Круг нажат (захват)
     if (ps2x.Button(PSB_CIRCLE))
     {
       count_pause = 0;
@@ -381,7 +396,7 @@ void loop()
       delay(SERVO_DELAY);
     }
 
-    //Квадрат нажат
+    //Квадрат нажат (захват)
     if (ps2x.Button(PSB_SQUARE))
     {
       count_pause = 0;
@@ -391,8 +406,6 @@ void loop()
         pwm.setPWM(SERVO_BUCKET_CH, 0, pulselen_bucket);
       }
       else pulselen_bucket = SERVO_BUCKET_MIN;
-
-
       robo_state = state_servoaction;
       delay(SERVO_DELAY);
     }
@@ -520,11 +533,25 @@ void StopMotors()
   digitalWrite(MOTOR_IN2A, LOW);
   analogWrite(MOTOR_IN2B, 0);
 }
+
+#ifdef BEEP_ON
 //для проигрывания тона
 void beep(int ton, int tim)
 {
   tone(BUZZER, ton, tim);
   delay(tim + 20);
 }
+#else
+void beep(unsigned char num, unsigned int tim)
+{
+  for (unsigned char num_i = 0; num_i < num; num_i++)
+  {
+    digitalWrite(BUZZER, HIGH);
+    delay(tim);
+    digitalWrite(BUZZER, LOW);
+    delay(100);
+  }
+}
+#endif
 
 

@@ -3,36 +3,41 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_PWMServoDriver.h>
-
 #include <PS2X_lib.h>
 
 #include <pictures.h> //массивы изображений для дисплея
 
-//условие управляемого динамика
+//условие управляемого динамика (раскомментить, если тон динамика может управляться частотой сигнала)
 /*#ifndef BEEP_ON
   #define BEEP_ON
   #endif*/
 
-
 //сервы
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); // called this way, it uses the default address 0x40
-#define SERVO_BUCKET_MIN  281
-#define SERVO_BUCKET_MAX  445
-#define SERVO_BUCKETUD_MIN  187
-#define SERVO_BUCKETUD_MAX  421
-#define SERVO_PLOW_MIN  320
-#define SERVO_PLOW_MAX  410
-#define SERVO_PLANT_MIN  320
-#define SERVO_PLANT_MAX  428
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 
+//граничные значения серв в микросекундах
+#define SERVO_BUCKET_MIN_MKS  1150 //крюк ковша сжат
+#define SERVO_BUCKET_MAX_MKS  1800 //крюк ковша разжат
+#define SERVO_BUCKETUD_MIN_MKS  1100 //ковш поднят
+#define SERVO_BUCKETUD_MAX_MKS  1870 //ковш опущен
+#define SERVO_PLOW_MIN_MKS  1500  //плуг поднят
+#define SERVO_PLOW_MAX_MKS  1870 //плуг опущен
+#define SERVO_PLANT_MIN_MKS  1450 //диспенсер положение "взять"
+#define SERVO_PLANT_MAX_MKS  1800 //диспенсер положение "бросить"
+
+#define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс)
+
+#define SERVO_CONST 4.28 //коэффициент для пересчёта углов серв с мкс в "тики"
+
+//подключение серв (выводы pca)
 #define SERVO_BUCKET_CH  7
 #define SERVO_BUCKETUD_CH 6
 #define SERVO_PLOW_CH  5
 #define SERVO_PLANT_CH 4
 
-#define DSERVO_const 5
-#define SERVO_FREQ 60
-#define SERVO_DELAY 7
+#define DSERVO_const 5 //шаг изменения положения
+#define SERVO_FREQ 60 //частота ШИМ (~57Гц)
+#define SERVO_DELAY 3 //задержка для правильной работы
 
 //Динамик
 #define BUZZER 11
@@ -61,6 +66,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define DELTAY 2
 
 //ноты
+#ifdef BEEP_ON
 #define note_c 261
 #define note_d 294
 #define note_e 329
@@ -68,37 +74,40 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define note_g 391
 #define note_a 440
 #define note_b 466
+#endif
 
-//пауза
+//Значение времени, через которое робот перейдёт в состояние бездействия
 #define MAXCOUNT_PAUSE 350*2  //350 = 30c
 
-//Режимы работы джойстика
+//Режимы работы джойстика (раскомментировать нужное)
 //- pressures = аналоговое считывание нажатия кнопок
 //- rumble    = вибромоторы
-
 #define pressures   true
 //#define pressures   false
-#define rumble      true
-//#define rumble      false
+//#define rumble      true
+#define rumble      false
 
-//изображение
+//параметры изображения на дисплее
 #define imageWidth 128
 #define imageHeight 64
 
 //регулирование скорости
 #define SPEED_MIN 90
 #define SPEED_MAX 255
-#define Dspeed_const 5
+#define Dspeed_const 30 //константа приращения
 
 //для АЦП
-#define UAREF 5.0
-#define ADC_MAX 1024
+#define UAREF 5.0 //опорное напряжение
+#define ADC_MAX 1024 //максимальная разрядность
+//выводы считывания
 #define ADC_PIN_VOLTAGE A1
 #define ADC_PIN_CURRENT A0
 #define DEL_CONST 1 //константа делителя напряжения
 #define MAXCOUNT_ADC 15 //задержка преобразования АЦП
-//#define MIN_MCU_CURRENT
+#define MAX_MCU_CURRENT 2
 #define MIN_MCU_VOLTAGE 3.3
+#define ADC_CURR_CONST 0.47
+
 
 //Состояния робота
 #define state_tired 0
@@ -108,18 +117,20 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define state_turnright 4
 #define state_servoaction  5
 #define state_notmove 6
+#define state_highcurrent 7
 #define state_pause 10
 
 int motorspeed = SPEED_MIN;
 int count_ADC = MAXCOUNT_ADC;
 unsigned int count_pause  = 0;
-int pulselen_bucket = 350;
-int pulselen_bucketud = 300;
-int pulselen_plow = SERVO_PLOW_MIN;
-int pulselen_plant = SERVO_PLANT_MIN;
+int pulselen_bucket = SERVO_CENTRAL;
+int pulselen_bucketud = SERVO_CENTRAL;
+int pulselen_plow;
 float mcu_voltage, mcu_current;
 unsigned char robo_state = state_notmove;
 unsigned char state_plow = 0;
+int SERVO_BUCKET_MIN, SERVO_BUCKET_MAX, SERVO_BUCKETUD_MIN, SERVO_BUCKETUD_MAX, SERVO_PLOW_MIN,
+    SERVO_PLOW_MAX, SERVO_PLANT_MIN, SERVO_PLANT_MAX;
 
 
 //Создание класса для джойстика
@@ -130,20 +141,18 @@ byte vibrate = 0;
 
 void setup() {
 
-  //Настройка выводов под драйвер
+  //Настройка выводов
   pinMode(MOTOR_ENA, OUTPUT);
   pinMode(MOTOR_ENB, OUTPUT);
   pinMode(MOTOR_IN1A, OUTPUT);
   pinMode(MOTOR_IN1B, OUTPUT);
   pinMode(MOTOR_IN2A, OUTPUT);
   pinMode(MOTOR_IN2B, OUTPUT);
-
   pinMode(BUZZER, OUTPUT);
   noTone(BUZZER);
 
-  //Установка частоты ШИМ
   pwm.begin();
-  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~60 Hz updates
+  pwm.setPWMFreq(SERVO_FREQ);  // Установка частоты ШИМ
 
   //Инициализация дисплея
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3D (for the 128x64)
@@ -159,6 +168,21 @@ void setup() {
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
 
+  //Вычисление границ серв
+  //
+  SERVO_PLANT_MAX = SERVO_PLANT_MAX_MKS / SERVO_CONST;
+  SERVO_PLANT_MIN = SERVO_PLANT_MIN_MKS / SERVO_CONST;
+
+  SERVO_BUCKET_MAX = SERVO_BUCKET_MAX_MKS / SERVO_CONST;
+  SERVO_BUCKET_MIN = SERVO_BUCKET_MIN_MKS / SERVO_CONST;
+
+  SERVO_BUCKETUD_MAX = SERVO_BUCKETUD_MAX_MKS / SERVO_CONST;
+  SERVO_BUCKETUD_MIN = SERVO_BUCKETUD_MIN_MKS / SERVO_CONST;
+
+  SERVO_PLOW_MAX = SERVO_PLOW_MAX_MKS / SERVO_CONST;
+  SERVO_PLOW_MIN = SERVO_PLOW_MIN_MKS / SERVO_CONST;
+
+
 #ifdef BEEP_ON
   //мелодия включения
   beep(note_c, 400);
@@ -167,15 +191,16 @@ void setup() {
   beep(note_b, 400);
   noTone(BUZZER);
 #else
-  beep(1, 700);
+  beep(1, 500);
 #endif
 
-  //Serial.begin(9600);
+  Serial.begin(9600);
 
   //Настройка опорного напряжения для АЦП: внешний источник на выводе AREF
   analogReference(EXTERNAL);
 
-  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);
+  //Центровка серв
+  ServCenter();
 }
 
 
@@ -190,9 +215,9 @@ void loop()
     count_ADC = 0;
     mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
     //    dtostrf(mcu_voltage, 4, 2, outstr); //преобразование флоат в строку 4 символа в строке, 2 знака после запятой
-    /* mcu_current = analogRead(ADC_PIN_CURRENT)* UAREF / ADC_MAX;
-      Serial.println(mcu_voltage);
-      Serial.println(mcu_current);*/
+    mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
+    Serial.println(mcu_voltage);
+    Serial.println(mcu_current);
   }
   else count_ADC++;
 
@@ -200,7 +225,7 @@ void loop()
   if (mcu_voltage < MIN_MCU_VOLTAGE)
   {
     robo_state = state_tired;
-    
+
 #ifdef BEEP_ON
     beep(note_b, 400);
     beep(note_g, 350);
@@ -208,10 +233,15 @@ void loop()
     beep(note_c, 400);
     noTone(BUZZER);
 #else
-    beep(2, 200);
+    beep(2, 100);
 #endif
-
   }
+
+  if (mcu_current > MAX_MCU_CURRENT)
+  {
+    robo_state = state_highcurrent;
+  }
+
   else
   {
     // ВВЕРХ нажато (движение вперёд)
@@ -260,7 +290,7 @@ void loop()
           beep(note_a, 300);
           noTone(BUZZER);
 #else
-          beep(3, 200);
+          beep(3, 100);
 #endif
           count_pause++;
         }
@@ -291,6 +321,7 @@ void loop()
     // L2 нажата (плуг)
     if (ps2x.ButtonPressed(PSB_L2))
     {
+      robo_state = state_servoaction;
       count_pause = 0;
       switch (state_plow)
       {
@@ -317,10 +348,13 @@ void loop()
       }
     }
 
-    //L1 (картошка)
+    //L1 (диспенсер)
     if (ps2x.ButtonPressed(PSB_L1))
     {
       count_pause = 0;
+      display.clearDisplay();
+      display.drawBitmap(0, 0,  eyes_difficult, imageWidth, imageHeight, 1);
+      display.display();
 
       pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MIN);
       delay(300);
@@ -331,25 +365,71 @@ void loop()
 
 
     // R1 нажата (увеличение скорости)
-    if (ps2x.Button(PSB_R1))
+    if (ps2x.ButtonPressed(PSB_R1))
     {
       count_pause = 0;
       if (motorspeed < (SPEED_MAX - Dspeed_const))
       {
         motorspeed = motorspeed + Dspeed_const;
+
+#ifdef BEEP_ON
+        //мелодия
+        beep(note_f, 50);
+        beep(note_a, 50);
+        noTone(BUZZER);
+#else
+        beep(2, 50);
+#endif
       }
-      else motorspeed = SPEED_MAX;
+      else
+      {
+        motorspeed = SPEED_MAX;
+
+#ifdef BEEP_ON
+        //мелодия
+        beep(note_a, 50);
+        beep(note_f, 50);
+        noTone(BUZZER);
+#else
+        beep(1, 100);
+        beep(1, 50);
+        beep(1, 100);
+#endif
+      }
     }
 
     // R2 нажата (уменьшение скорости)
-    if (ps2x.Button(PSB_R2))
+    if (ps2x.ButtonPressed(PSB_R2))
     {
       count_pause = 0;
       if (motorspeed > (SPEED_MIN + Dspeed_const))
       {
         motorspeed = motorspeed - Dspeed_const;
+
+#ifdef BEEP_ON
+        //мелодия
+        beep(note_a, 50);
+        beep(note_f, 50);
+        noTone(BUZZER);
+#else
+        beep(1, 50);
+#endif
       }
-      else motorspeed = SPEED_MIN;
+      else
+      {
+        motorspeed = SPEED_MIN;
+
+#ifdef BEEP_ON
+        //мелодия
+        beep(note_a, 50);
+        beep(note_f, 50);
+        noTone(BUZZER);
+#else
+        beep(1, 100);
+        beep(1, 50);
+        beep(1, 100);
+#endif
+      }
     }
 
     // Треугольник нажат (ковш вверх)
@@ -423,6 +503,20 @@ void loop()
 
         while (mcu_voltage < MIN_MCU_VOLTAGE)
           mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX;
+        robo_state = state_notmove;
+        break;
+      }
+    case state_highcurrent:
+      {
+        display.clearDisplay();
+        display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
+        display.display();
+
+        StopMotors();
+        ServCenter();
+
+        while (mcu_current > MAX_MCU_CURRENT)
+          mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
         robo_state = state_notmove;
         break;
       }
@@ -534,6 +628,17 @@ void StopMotors()
   analogWrite(MOTOR_IN2B, 0);
 }
 
+void ServCenter()
+{
+  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);
+
+  pulselen_bucket = SERVO_CENTRAL;
+  pulselen_bucketud = SERVO_CENTRAL;
+}
+
 #ifdef BEEP_ON
 //для проигрывания тона
 void beep(int ton, int tim)
@@ -549,7 +654,7 @@ void beep(unsigned char num, unsigned int tim)
     digitalWrite(BUZZER, HIGH);
     delay(tim);
     digitalWrite(BUZZER, LOW);
-    delay(100);
+    delay(50);
   }
 }
 #endif

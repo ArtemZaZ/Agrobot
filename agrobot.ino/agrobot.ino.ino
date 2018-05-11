@@ -104,7 +104,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define ADC_PIN_CURRENT A0
 #define DEL_CONST 1 //константа делителя напряжения
 #define MAXCOUNT_ADC 15 //задержка преобразования АЦП
-#define MAX_MCU_CURRENT 2
+#define MAX_MCU_CURRENT 5 //максимальный ток
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
 
@@ -194,7 +194,7 @@ void setup() {
   beep(1, 500);
 #endif
 
-  Serial.begin(9600);
+ // Serial.begin(9600);
 
   //Настройка опорного напряжения для АЦП: внешний источник на выводе AREF
   analogReference(EXTERNAL);
@@ -216,8 +216,8 @@ void loop()
     mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
     //    dtostrf(mcu_voltage, 4, 2, outstr); //преобразование флоат в строку 4 символа в строке, 2 знака после запятой
     mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
-    Serial.println(mcu_voltage);
-    Serial.println(mcu_current);
+    /*Serial.println(mcu_voltage);
+    Serial.println(mcu_current);*/
   }
   else count_ADC++;
 

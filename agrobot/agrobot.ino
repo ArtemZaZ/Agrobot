@@ -23,7 +23,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализа�
 #define SERVO_PLOW_MIN_MKS  1500  //плуг поднят
 #define SERVO_PLOW_MAX_MKS  1870 //плуг опущен
 #define SERVO_PLANT_MIN_MKS  1450 //диспенсер положение "взять"
-#define SERVO_PLANT_MAX_MKS  1800 //диспенсер положение "бросить"
+#define SERVO_PLANT_MAX_MKS  1850 //диспенсер положение "бросить"
 
 #define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс)
 

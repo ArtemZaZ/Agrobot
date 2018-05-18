@@ -7,7 +7,7 @@
 
 ## Порядок установки необходимых библиотек
 ***
-Все библиотеки необходимо скачать по ссылкам и распаковать в домашнем каталоге ArduinoIDE Arduino/libraries _(при отсутствии папки libraries в каталоге Arduino необходимо создать её)_, каждую в соответствующей ей папке (например, Arduino/libraries/Adafruit-GFX-Library).
+Все библиотеки необходимо скачать по ссылкам и распаковать в домашнем каталоге ArduinoIDE Arduino/libraries _(при отсутствии папки libraries в каталоге Arduino необходимо создать её)_, каждую в соответствующую ей папку (например, Arduino/libraries/Adafruit-GFX-Library).
 
 [Adafruit-GFX-Library](https://github.com/adafruit/Adafruit-GFX-Library)
 

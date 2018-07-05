@@ -21,8 +21,8 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализа�
 #define SERVO_BUCKETUD_MIN_MKS  1100 //ковш поднят
 #define SERVO_BUCKETUD_MAX_MKS  1870 //ковш опущен
 #define SERVO_PLOW_MIN_MKS  1500  //плуг поднят
-#define SERVO_PLOW_MAX_MKS  1870 //плуг опущен
-#define SERVO_PLANT_MIN_MKS  1450 //диспенсер положение "взять"
+#define SERVO_PLOW_MAX_MKS  1820 //плуг опущен
+#define SERVO_PLANT_MIN_MKS  1500 //диспенсер положение "взять"
 #define SERVO_PLANT_MAX_MKS  1850 //диспенсер положение "бросить"
 
 #define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс)
@@ -125,7 +125,7 @@ int count_ADC = MAXCOUNT_ADC;
 unsigned int count_pause  = 0;
 int pulselen_bucket = SERVO_CENTRAL;
 int pulselen_bucketud = SERVO_CENTRAL;
-int pulselen_plow;
+int pulselen_plow, pulselen_plant;
 float mcu_voltage, mcu_current;
 unsigned char robo_state = state_notmove;
 unsigned char state_plow = 0;
@@ -356,10 +356,22 @@ void loop()
       display.drawBitmap(0, 0,  eyes_difficult, imageWidth, imageHeight, 1);
       display.display();
 
+      for (pulselen_plant = SERVO_PLANT_MIN; pulselen_plant < SERVO_PLANT_MAX; pulselen_plant ++)
+            {
+              pwm.setPWM(SERVO_PLANT_CH, 0, pulselen_plant);
+              delay(1);
+            }
+      delay(200);
+      for (pulselen_plant = SERVO_PLANT_MAX; pulselen_plant > SERVO_PLANT_MIN; pulselen_plant --)
+            {
+              pwm.setPWM(SERVO_PLANT_CH, 0, pulselen_plant);
+              delay(1);
+            }
+/*
       pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MIN);
-      delay(300);
+      delay(400);
 
-      pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);
+      pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);*/
 
     }
 
@@ -628,9 +640,10 @@ void StopMotors()
   analogWrite(MOTOR_IN2B, 0);
 }
 
+//центовка серв
 void ServCenter()
 {
-  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL); //SERVO_PLANT_MAX
   pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
   pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
   pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);

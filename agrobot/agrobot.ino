@@ -22,8 +22,8 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализа�
 #define SERVO_BUCKETUD_MAX_MKS  1870 //ковш опущен
 #define SERVO_PLOW_MIN_MKS  1500  //плуг поднят
 #define SERVO_PLOW_MAX_MKS  1820 //плуг опущен
-#define SERVO_PLANT_MIN_MKS  1500 //диспенсер положение "взять"
-#define SERVO_PLANT_MAX_MKS  1850 //диспенсер положение "бросить"
+#define SERVO_PLANT_MIN_MKS  1400 //диспенсер положение "взять"
+#define SERVO_PLANT_MAX_MKS  1900 //диспенсер положение "бросить"
 
 #define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс)
 
@@ -104,7 +104,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define ADC_PIN_CURRENT A0
 #define DEL_CONST 1 //константа делителя напряжения
 #define MAXCOUNT_ADC 15 //задержка преобразования АЦП
-#define MAX_MCU_CURRENT 5 //максимальный ток
+#define MAX_MCU_CURRENT 4.5 //максимальный ток
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
 
@@ -128,7 +128,7 @@ int pulselen_bucketud = SERVO_CENTRAL;
 int pulselen_plow, pulselen_plant;
 float mcu_voltage, mcu_current;
 unsigned char robo_state = state_notmove;
-unsigned char state_plow = 0;
+unsigned char state_plow = 0, outstr;
 int SERVO_BUCKET_MIN, SERVO_BUCKET_MAX, SERVO_BUCKETUD_MIN, SERVO_BUCKETUD_MAX, SERVO_PLOW_MIN,
     SERVO_PLOW_MAX, SERVO_PLANT_MIN, SERVO_PLANT_MAX;
 
@@ -194,7 +194,7 @@ void setup() {
   beep(1, 500);
 #endif
 
- // Serial.begin(9600);
+  //Serial.begin(9600);
 
   //Настройка опорного напряжения для АЦП: внешний источник на выводе AREF
   analogReference(EXTERNAL);
@@ -217,7 +217,7 @@ void loop()
     //    dtostrf(mcu_voltage, 4, 2, outstr); //преобразование флоат в строку 4 символа в строке, 2 знака после запятой
     mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
     /*Serial.println(mcu_voltage);
-    Serial.println(mcu_current);*/
+      Serial.println(mcu_current);*/
   }
   else count_ADC++;
 
@@ -237,6 +237,7 @@ void loop()
 #endif
   }
 
+  //Если ток превышает максимальное значение
   if (mcu_current > MAX_MCU_CURRENT)
   {
     robo_state = state_highcurrent;
@@ -315,7 +316,6 @@ void loop()
       count_pause = 0;
     }
 
-
     //vibrate = ps2x.Analog(PSAB_CROSS);  //Скорость вибрации устанавливаеться в зависимости от силы нажатия кнопки (X)
 
     // L2 нажата (плуг)
@@ -357,21 +357,21 @@ void loop()
       display.display();
 
       for (pulselen_plant = SERVO_PLANT_MIN; pulselen_plant < SERVO_PLANT_MAX; pulselen_plant ++)
-            {
-              pwm.setPWM(SERVO_PLANT_CH, 0, pulselen_plant);
-              delay(1);
-            }
-      delay(200);
+      {
+        pwm.setPWM(SERVO_PLANT_CH, 0, pulselen_plant);
+        delay(2);
+      }
+      delay(500);
       for (pulselen_plant = SERVO_PLANT_MAX; pulselen_plant > SERVO_PLANT_MIN; pulselen_plant --)
-            {
-              pwm.setPWM(SERVO_PLANT_CH, 0, pulselen_plant);
-              delay(1);
-            }
-/*
-      pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MIN);
-      delay(400);
+      {
+        pwm.setPWM(SERVO_PLANT_CH, 0, pulselen_plant);
+        delay(2);
+      }
+      /*
+            pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MIN);
+            delay(400);
 
-      pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);*/
+            pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_PLANT_MAX);*/
 
     }
 
@@ -523,9 +523,16 @@ void loop()
         display.clearDisplay();
         display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
         display.display();
-
+      
         StopMotors();
-        ServCenter();
+        //ServCenter();
+
+        pwm.setPWM(SERVO_PLANT_CH, 0, 0); //SERVO_PLANT_MAX
+        pwm.setPWM(SERVO_PLOW_CH, 0, 0);
+        pwm.setPWM(SERVO_BUCKET_CH, 0, 0);
+        pwm.setPWM(SERVO_BUCKETUD_CH, 0, 0);
+
+
 
         while (mcu_current > MAX_MCU_CURRENT)
           mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;

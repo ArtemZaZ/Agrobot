@@ -9,28 +9,26 @@
 #include <pictures.h> //массивы изображений для дисплея
 
 //условие управляемого динамика (раскомментить, если тон динамика может управляться частотой сигнала)
-/*#ifndef BEEP_ON
-  #define BEEP_ON
-  #endif*/
+#ifndef BEEP_ON
+#define BEEP_ON
+#endif
 
 //для работы с EEPROM
-#define ADDRESS_FLAG_H 0
-#define ADDRESS_FLAG_L ADDRESS_FLAG_H + 1
-#define ADDRESS_SPMAX ADDRESS_FLAG_L + 1
-#define ADDRESS_SPMIN ADDRESS_SPMAX + sizeof(int)
+#define ADDRESS_SERVPLANT_MIN 0
+#define ADDRESS_SERVPLANT_MAX ADDRESS_SERVPLANT_MIN + sizeof(int)
+
+#define ADDRESS_SERVPLOW_MIN  ADDRESS_SERVPLANT_MAX + sizeof(int)
+#define ADDRESS_SERVPLOW_MAX  ADDRESS_SERVPLOW_MIN + sizeof(int)
+
+#define ADDRESS_SERVBUCKETUD_MIN  ADDRESS_SERVPLOW_MAX + sizeof(int)
+#define ADDRESS_SERVBUCKETUD_MAX  ADDRESS_SERVBUCKETUD_MIN + sizeof(int)
+
+#define ADDRESS_SERVBUCKET_MIN  ADDRESS_SERVBUCKETUD_MAX + sizeof(int)
+#define ADDRESS_SERVBUCKET_MAX  ADDRESS_SERVBUCKET_MIN + sizeof(int)
+
 
 //сервы
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
-
-//граничные значения серв в микросекундах
-#define SERVO_BUCKET_MIN_MKS  1150 //крюк ковша сжат
-#define SERVO_BUCKET_MAX_MKS  1800 //крюк ковша разжат
-#define SERVO_BUCKETUD_MIN_MKS  1100 //ковш поднят
-#define SERVO_BUCKETUD_MAX_MKS  1870 //ковш опущен
-#define SERVO_PLOW_MIN_MKS  1500  //плуг поднят
-#define SERVO_PLOW_MAX_MKS  1820 //плуг опущен
-#define SERVO_PLANT_MIN_MKS  1450 //диспенсер положение "взять"
-#define SERVO_PLANT_MAX_MKS  1900 //диспенсер положение "бросить"
 
 #define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс)
 
@@ -41,6 +39,9 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализа�
 #define SERVO_BUCKETUD_CH 6
 #define SERVO_PLOW_CH  5
 #define SERVO_PLANT_CH 4
+
+#define SERVO_MAX_CH  7
+#define SERVO_MIN_CH  4
 
 #define DSERVO_const 5 //шаг изменения положения
 #define SERVO_FREQ 60 //частота ШИМ (~57Гц)
@@ -111,7 +112,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define ADC_PIN_CURRENT A0
 #define DEL_CONST 1 //константа делителя напряжения
 #define MAXCOUNT_ADC 15 //задержка преобразования АЦП
-#define MAX_MCU_CURRENT 4.5 //максимальный ток
+#define MAX_MCU_CURRENT 5 //максимальный ток (5А)
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
 
@@ -136,10 +137,10 @@ int pulselen_bucket = SERVO_CENTRAL;
 int pulselen_bucketud = SERVO_CENTRAL;
 int pulselen_plow, pulselen_plant;
 float mcu_voltage, mcu_current;
-unsigned char robo_state = state_notmove, calibration_flag1 = 0, calibration_flag2 = 0;
-unsigned char state_plow = 0, outstr;
-int SERVO_BUCKET_MIN, SERVO_BUCKET_MAX, SERVO_BUCKETUD_MIN, SERVO_BUCKETUD_MAX, SERVO_PLOW_MIN,
-    SERVO_PLOW_MAX, SERVO_PLANT_MIN, SERVO_PLANT_MAX, calibration = SERVO_CENTRAL;
+unsigned char robo_state = state_notmove;
+unsigned char state_plow = 0, outstr, servo_ch = 0, address_max, address_min;
+unsigned int SERVO_BUCKET_MIN, SERVO_BUCKET_MAX, SERVO_BUCKETUD_MIN, SERVO_BUCKETUD_MAX, SERVO_PLOW_MIN,
+         SERVO_PLOW_MAX, SERVO_PLANT_MIN, SERVO_PLANT_MAX, calibration = SERVO_CENTRAL;
 
 
 //Создание класса для джойстика
@@ -164,7 +165,7 @@ void setup() {
   pwm.setPWMFreq(SERVO_FREQ);  // Установка частоты ШИМ
 
   //Инициализация дисплея
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // Инициализация I2C для дисплея с адресом 0x3D 
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // Инициализация I2C для дисплея с адресом 0x3D
   display.display();
   delay(2000); //задержка для инициализации дисплея
   display.clearDisplay(); // очистка дисплея
@@ -172,22 +173,19 @@ void setup() {
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
 
-  //Вычисление границ серв
-  SERVO_BUCKET_MAX = SERVO_BUCKET_MAX_MKS / SERVO_CONST;
-  SERVO_BUCKET_MIN = SERVO_BUCKET_MIN_MKS / SERVO_CONST;
-
-  SERVO_BUCKETUD_MAX = SERVO_BUCKETUD_MAX_MKS / SERVO_CONST;
-  SERVO_BUCKETUD_MIN = SERVO_BUCKETUD_MIN_MKS / SERVO_CONST;
-
-  SERVO_PLOW_MAX = SERVO_PLOW_MAX_MKS / SERVO_CONST;
-  SERVO_PLOW_MIN = SERVO_PLOW_MIN_MKS / SERVO_CONST;
-
   //Значения границ сервы диспенсера считываются из энергонезависимой памяти
-  EEPROM.get(ADDRESS_SPMAX, SERVO_PLANT_MAX);
-  EEPROM.get(ADDRESS_SPMIN, SERVO_PLANT_MIN);
+  EEPROM.get(ADDRESS_SERVPLANT_MAX, SERVO_PLANT_MAX);
+  EEPROM.get(ADDRESS_SERVPLANT_MIN, SERVO_PLANT_MIN);
 
-  //Флаги калибровки границ сервы диспенсера (для вывода робота из режима калибровки)
-  calibration_flag1 = calibration_flag2 = 0;
+  EEPROM.get(ADDRESS_SERVPLOW_MAX, SERVO_PLOW_MAX);
+  EEPROM.get(ADDRESS_SERVPLOW_MIN, SERVO_PLOW_MIN);
+
+  EEPROM.get(ADDRESS_SERVBUCKET_MAX, SERVO_BUCKET_MAX);
+  EEPROM.get(ADDRESS_SERVBUCKET_MIN, SERVO_BUCKET_MIN);
+
+  EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
+  EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
+
 
 #ifdef BEEP_ON
   //мелодия включения
@@ -251,87 +249,153 @@ void loop()
 
   else
   {
-    if (robo_state == state_calibration)  //РЕЖИМ КАЛИБРОВКИ СЕРВЫ ДИСПЕНСЕРА
+    if (robo_state == state_calibration)  //РЕЖИМ КАЛИБРОВКИ
     {
-      PrintText("Calibration", 3);
 
-      if (ps2x.Button(PSB_PAD_UP))  //центровка сервы
+      if (ps2x.ButtonPressed(PSB_R1))
+      {
+        servo_ch++;
+        servo_ch = constrain(servo_ch, SERVO_MIN_CH, SERVO_MAX_CH);
+        calibration = SERVO_CENTRAL;
+        pwm.setPWM(servo_ch, 0, calibration);
+      }
+
+      if (ps2x.ButtonPressed(PSB_L1))
+      {
+        servo_ch--;
+        servo_ch = constrain(servo_ch, SERVO_MIN_CH, SERVO_MAX_CH);
+        calibration = SERVO_CENTRAL;
+        pwm.setPWM(servo_ch, 0, calibration);
+      }
+
+      if (ps2x.Button(PSB_L3) | ps2x.Button(PSB_R3)) //центровка сервы
       {
         calibration = SERVO_CENTRAL;
-        pwm.setPWM(SERVO_PLANT_CH, 0, calibration);
+        pwm.setPWM(servo_ch, 0, calibration);
         delay(SERVO_DELAY);
       }
 
-      // ВПРАВО
-      if (ps2x.Button(PSB_PAD_RIGHT))
+
+      if (ps2x.Button(PSB_PAD_RIGHT) | ps2x.Button(PSB_PAD_DOWN))
       {
         calibration--;
-        pwm.setPWM(SERVO_PLANT_CH, 0, calibration);
+        pwm.setPWM(servo_ch, 0, calibration);
         delay(SERVO_DELAY);
       }
 
-      //ВЛЕВО
-      if (ps2x.Button(PSB_PAD_LEFT))
+
+      if (ps2x.Button(PSB_PAD_LEFT) | ps2x.Button(PSB_PAD_UP))
       {
         calibration++;
-        pwm.setPWM(SERVO_PLANT_CH, 0, calibration);
+        pwm.setPWM(servo_ch, 0, calibration);
         delay(SERVO_DELAY);
       }
 
-      if (ps2x.ButtonPressed(PSB_SQUARE)) //найдено крайнее левое положение сервы
+      if (ps2x.ButtonPressed(PSB_SQUARE) | ps2x.ButtonPressed(PSB_TRIANGLE)) //найдено крайнее левое (верхнее) положение сервы
       {
-        EEPROM.put(ADDRESS_SPMAX, calibration);
-        EEPROM.get(ADDRESS_SPMAX, SERVO_PLANT_MAX);
-        EEPROM.update(ADDRESS_FLAG_H, 1);
+        EEPROM.put(address_max, calibration);
 
 #ifdef BEEP_ON
-        beep(note_c, 400);
+        beep(note_c, 200);
         noTone(BUZZER);
 #else
-        beep(1, 400);
+        beep(1, 200);
 #endif
-        calibration_flag1 = 1;
+
       }
 
-      if (ps2x.ButtonPressed(PSB_CIRCLE)) //найдено крайнее правое положение сервы
+      if (ps2x.ButtonPressed(PSB_CIRCLE) | ps2x.ButtonPressed(PSB_CROSS)) //найдено крайнее правое (нижнее) положение сервы
       {
-        EEPROM.put(ADDRESS_SPMIN, calibration);
-        EEPROM.get(ADDRESS_SPMIN, SERVO_PLANT_MIN);
-        EEPROM.update(ADDRESS_FLAG_L, 1);
+        EEPROM.put(address_min, calibration);
 
 #ifdef BEEP_ON
-        beep(note_b, 400);
+        beep(note_b, 200);
         noTone(BUZZER);
 #else
-        beep(1, 400);
+        beep(1, 200);
 #endif
-        calibration_flag2 = 1;
       }
-      
-//если запомнены обе границы - выход из режима калибровки
-      if ((calibration_flag1 == 1) & (calibration_flag2 == 1))  
+
+      //выход из режима калибровки
+      if (ps2x.Button(PSB_L2) & ps2x.Button(PSB_R2))
       {
         robo_state = state_notmove;
-        calibration_flag1 = calibration_flag2 = 0;
+        EEPROM.get(ADDRESS_SERVPLANT_MAX, SERVO_PLANT_MAX);
+        EEPROM.get(ADDRESS_SERVPLANT_MIN, SERVO_PLANT_MIN);
+
+        EEPROM.get(ADDRESS_SERVPLOW_MAX, SERVO_PLOW_MAX);
+        EEPROM.get(ADDRESS_SERVPLOW_MIN, SERVO_PLOW_MIN);
+
+        EEPROM.get(ADDRESS_SERVBUCKET_MAX, SERVO_BUCKET_MAX);
+        EEPROM.get(ADDRESS_SERVBUCKET_MIN, SERVO_BUCKET_MIN);
+
+        EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
+        EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
 
 #ifdef BEEP_ON
-        beep(note_c, 400);
-        beep(note_e, 350);
-        beep(note_g, 150);
-        beep(note_b, 400);
+        beep(note_c, 300);
+        beep(note_g, 300);
+        beep(note_b, 300);
         noTone(BUZZER);
 #else
         beep(1, 500);
 #endif
       }
+
+      switch (servo_ch)
+      {
+        case 0:
+          {
+            PrintText("Calibration", 3);
+            break;
+          }
+        case SERVO_PLANT_CH:
+          {
+            PrintText("PLANT", 3);
+            address_max = ADDRESS_SERVPLANT_MAX;
+            address_min = ADDRESS_SERVPLANT_MIN;
+            break;
+          }
+        case SERVO_PLOW_CH:
+          {
+            PrintText("PLOW", 3);
+            address_max = ADDRESS_SERVPLOW_MAX;
+            address_min = ADDRESS_SERVPLOW_MIN;
+            break;
+          }
+        case SERVO_BUCKETUD_CH:
+          {
+            PrintText("BUCKET UP/DOWN", 3);
+            address_max = ADDRESS_SERVBUCKETUD_MAX;
+            address_min = ADDRESS_SERVBUCKETUD_MIN;
+            break;
+          }
+        case SERVO_BUCKET_CH:
+          {
+            PrintText("BUCKET", 3);
+            address_max = ADDRESS_SERVBUCKET_MAX;
+            address_min = ADDRESS_SERVBUCKET_MIN;
+            break;
+          }
+      }
+
     }
-    
+
     else
     {
       //Вход в режим калибровки
-      if (ps2x.Button(PSB_L3)&ps2x.Button(PSB_R3)) 
+      if (ps2x.Button(PSB_L3)&ps2x.Button(PSB_R3))
       {
         robo_state = state_calibration;
+#ifdef BEEP_ON
+        beep(note_f, 200);
+        beep(note_f, 200);
+        beep(note_c, 350);
+        noTone(BUZZER);
+#else
+        beep(2, 200);
+        beep(1, 350);
+#endif
         count_pause = 0;
       }
 
@@ -412,30 +476,37 @@ void loop()
       // L2 нажата (плуг)
       if (ps2x.ButtonPressed(PSB_L2))
       {
-        robo_state = state_servoaction;
         count_pause = 0;
-        switch (state_plow)
+        robo_state = state_servoaction;
+        if ((SERVO_PLOW_MAX == 65535) | (SERVO_PLOW_MIN == 65535))
         {
-          case 0:
-            {
-              state_plow++;
-              for (pulselen_plow = SERVO_PLOW_MIN; pulselen_plow < SERVO_PLOW_MAX; pulselen_plow ++)
+          beep_not();
+        }
+        else
+        {
+          switch (state_plow)
+          {
+            case 0:
               {
-                pwm.setPWM(SERVO_PLOW_CH, 0, pulselen_plow);
-                delay(SERVO_DELAY);
+                state_plow++;
+                for (pulselen_plow = SERVO_PLOW_MIN; pulselen_plow < SERVO_PLOW_MAX; pulselen_plow ++)
+                {
+                  pwm.setPWM(SERVO_PLOW_CH, 0, pulselen_plow);
+                  delay(SERVO_DELAY);
+                }
+                break;
               }
-              break;
-            }
-          case 1:
-            {
-              state_plow--;
-              for (pulselen_plow = SERVO_PLOW_MAX; pulselen_plow > SERVO_PLOW_MIN; pulselen_plow --)
+            case 1:
               {
-                pwm.setPWM(SERVO_PLOW_CH, 0, pulselen_plow);
-                delay(SERVO_DELAY);
+                state_plow--;
+                for (pulselen_plow = SERVO_PLOW_MAX; pulselen_plow > SERVO_PLOW_MIN; pulselen_plow --)
+                {
+                  pwm.setPWM(SERVO_PLOW_CH, 0, pulselen_plow);
+                  delay(SERVO_DELAY);
+                }
+                break;
               }
-              break;
-            }
+          }
         }
       }
 
@@ -444,18 +515,10 @@ void loop()
       {
         count_pause = 0;
 
-//проверка флагов значений границ сервы диспенсера
-        if ((EEPROM.read(ADDRESS_FLAG_H) == 0) | (EEPROM.read(ADDRESS_FLAG_L) == 0))
+        //проверка флагов значений границ сервы диспенсера
+        if ((SERVO_PLANT_MAX == 65535) | (SERVO_PLANT_MIN == 65535))
         {
-#ifdef BEEP_ON
-          //мелодия
-          beep(note_g, 50);
-          beep(note_e, 50);
-          beep(note_c, 50);
-          noTone(BUZZER);
-#else
-          beep(3, 100);
-#endif
+          beep_not();
         }
         else
         {
@@ -501,8 +564,9 @@ void loop()
 
 #ifdef BEEP_ON
           //мелодия
+          beep(note_a, 100);
           beep(note_a, 50);
-          beep(note_f, 50);
+          beep(note_a, 100);
           noTone(BUZZER);
 #else
           beep(1, 100);
@@ -535,8 +599,9 @@ void loop()
 
 #ifdef BEEP_ON
           //мелодия
-          beep(note_a, 50);
+          beep(note_f, 100);
           beep(note_f, 50);
+          beep(note_f, 100);
           noTone(BUZZER);
 #else
           beep(1, 100);
@@ -550,14 +615,21 @@ void loop()
       if (ps2x.Button(PSB_TRIANGLE))
       {
         count_pause = 0;
-        if (pulselen_bucketud > (SERVO_BUCKETUD_MIN + DSERVO_const))
+        if (SERVO_BUCKETUD_MIN == 65535)
         {
-          pulselen_bucketud = pulselen_bucketud - DSERVO_const;
-          pwm.setPWM(SERVO_BUCKETUD_CH, 0, pulselen_bucketud);
+          beep_not();
         }
-        else pulselen_bucketud = SERVO_BUCKETUD_MIN;
-        robo_state = state_servoaction;
-        delay(SERVO_DELAY);
+        else
+        {
+          if (pulselen_bucketud > (SERVO_BUCKETUD_MIN + DSERVO_const))
+          {
+            pulselen_bucketud = pulselen_bucketud - DSERVO_const;
+            pwm.setPWM(SERVO_BUCKETUD_CH, 0, pulselen_bucketud);
+          }
+          else pulselen_bucketud = SERVO_BUCKETUD_MIN;
+          robo_state = state_servoaction;
+          delay(SERVO_DELAY);
+        }
       }
 
 
@@ -565,128 +637,152 @@ void loop()
       if (ps2x.Button(PSB_CROSS))
       {
         count_pause = 0;
-        if (pulselen_bucketud < (SERVO_BUCKETUD_MAX - DSERVO_const))
+        if (SERVO_BUCKETUD_MAX == 65535)
         {
-          pulselen_bucketud = pulselen_bucketud + DSERVO_const;
-          pwm.setPWM(SERVO_BUCKETUD_CH, 0, pulselen_bucketud);
+          beep_not();
         }
-        else pulselen_bucketud = SERVO_BUCKETUD_MAX;
+        else
+        {
+          if (pulselen_bucketud < (SERVO_BUCKETUD_MAX - DSERVO_const))
+          {
+            pulselen_bucketud = pulselen_bucketud + DSERVO_const;
+            pwm.setPWM(SERVO_BUCKETUD_CH, 0, pulselen_bucketud);
+          }
+          else pulselen_bucketud = SERVO_BUCKETUD_MAX;
 
-        robo_state = state_servoaction;
-        delay(SERVO_DELAY);
+          robo_state = state_servoaction;
+          delay(SERVO_DELAY);
+        }
       }
 
       //Круг нажат (захват)
       if (ps2x.Button(PSB_CIRCLE))
       {
         count_pause = 0;
-        if (pulselen_bucket < (SERVO_BUCKET_MAX - DSERVO_const))
+
+        if (SERVO_BUCKET_MAX == 65535)
         {
-          pulselen_bucket = pulselen_bucket + DSERVO_const;
-          pwm.setPWM(SERVO_BUCKET_CH, 0, pulselen_bucket);
+          beep_not();
         }
-        else pulselen_bucket = SERVO_BUCKET_MAX;
-        robo_state = state_servoaction;
-        delay(SERVO_DELAY);
+        else
+        {
+          if (pulselen_bucket < (SERVO_BUCKET_MAX - DSERVO_const))
+          {
+            pulselen_bucket = pulselen_bucket + DSERVO_const;
+            pwm.setPWM(SERVO_BUCKET_CH, 0, pulselen_bucket);
+          }
+          else pulselen_bucket = SERVO_BUCKET_MAX;
+          robo_state = state_servoaction;
+          delay(SERVO_DELAY);
+        }
       }
 
       //Квадрат нажат (захват)
       if (ps2x.Button(PSB_SQUARE))
       {
         count_pause = 0;
-        if (pulselen_bucket > (SERVO_BUCKET_MIN + DSERVO_const))
+        if (SERVO_BUCKET_MIN == 65535)
         {
-          pulselen_bucket = pulselen_bucket - DSERVO_const;
-          pwm.setPWM(SERVO_BUCKET_CH, 0, pulselen_bucket);
+          beep_not();
         }
-        else pulselen_bucket = SERVO_BUCKET_MIN;
-        robo_state = state_servoaction;
-        delay(SERVO_DELAY);
+        else
+        {
+          if (pulselen_bucket > (SERVO_BUCKET_MIN + DSERVO_const))
+          {
+            pulselen_bucket = pulselen_bucket - DSERVO_const;
+            pwm.setPWM(SERVO_BUCKET_CH, 0, pulselen_bucket);
+          }
+          else pulselen_bucket = SERVO_BUCKET_MIN;
+          robo_state = state_servoaction;
+          delay(SERVO_DELAY);
+        }
+      }
+
+
+
+      //Проверка состояния робота
+      switch (robo_state)
+      {
+        case state_tired:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
+            display.display();
+
+            while (mcu_voltage < MIN_MCU_VOLTAGE)
+              mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX;
+            robo_state = state_notmove;
+            break;
+          }
+        case state_highcurrent:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
+            display.display();
+
+            StopMotors();
+
+            pwm.setPWM(SERVO_PLANT_CH, 0, 0); //SERVO_PLANT_MAX
+            pwm.setPWM(SERVO_PLOW_CH, 0, 0);
+            pwm.setPWM(SERVO_BUCKET_CH, 0, 0);
+            pwm.setPWM(SERVO_BUCKETUD_CH, 0, 0);
+
+            while (mcu_current > MAX_MCU_CURRENT)
+              mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
+            robo_state = state_notmove;
+            break;
+          }
+        case state_go:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_up, imageWidth, imageHeight, 1);
+            display.display();
+            break;
+          }
+        case state_goback:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_down, imageWidth, imageHeight, 1);
+            display.display();
+            break;
+          }
+        case state_turnleft:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_left, imageWidth, imageHeight, 1);
+            display.display();
+            break;
+          }
+        case state_turnright:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_right, imageWidth, imageHeight, 1);
+            display.display();
+            break;
+          }
+        case state_servoaction:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_difficult, imageWidth, imageHeight, 1);
+            display.display();
+            break;
+          }
+        case state_pause:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_wow, imageWidth, imageHeight, 1);
+            display.display();
+            break;
+          }
+        case state_notmove:
+          {
+            display.clearDisplay();
+            display.drawBitmap(0, 0,  eyes_cute, imageWidth, imageHeight, 1);
+            display.display();
+            break;
+          }
       }
     }
-  }
-
-  //Проверка состояния робота
-  switch (robo_state)
-  {
-    case state_tired:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
-        display.display();
-
-        while (mcu_voltage < MIN_MCU_VOLTAGE)
-          mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX;
-        robo_state = state_notmove;
-        break;
-      }
-    case state_highcurrent:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
-        display.display();
-
-        StopMotors();
-     
-        pwm.setPWM(SERVO_PLANT_CH, 0, 0); //SERVO_PLANT_MAX
-        pwm.setPWM(SERVO_PLOW_CH, 0, 0);
-        pwm.setPWM(SERVO_BUCKET_CH, 0, 0);
-        pwm.setPWM(SERVO_BUCKETUD_CH, 0, 0);
-
-        while (mcu_current > MAX_MCU_CURRENT)
-          mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
-        robo_state = state_notmove;
-        break;
-      }
-    case state_go:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_up, imageWidth, imageHeight, 1);
-        display.display();
-        break;
-      }
-    case state_goback:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_down, imageWidth, imageHeight, 1);
-        display.display();
-        break;
-      }
-    case state_turnleft:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_left, imageWidth, imageHeight, 1);
-        display.display();
-        break;
-      }
-    case state_turnright:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_right, imageWidth, imageHeight, 1);
-        display.display();
-        break;
-      }
-    case state_servoaction:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_difficult, imageWidth, imageHeight, 1);
-        display.display();
-        break;
-      }
-    case state_pause:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_wow, imageWidth, imageHeight, 1);
-        display.display();
-        break;
-      }
-    case state_notmove:
-      {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_cute, imageWidth, imageHeight, 1);
-        display.display();
-        break;
-      }
   }
 }
 
@@ -778,4 +874,16 @@ void beep(unsigned char num, unsigned int tim)
 }
 #endif
 
+void beep_not()
+{
+#ifdef BEEP_ON
+  //мелодия
+  beep(note_g, 50);
+  beep(note_e, 50);
+  beep(note_c, 50);
+  noTone(BUZZER);
+#else
+  beep(3, 100);
+#endif
+}
 

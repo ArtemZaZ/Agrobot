@@ -13,6 +13,7 @@
 #define BEEP_ON
 #endif
 
+
 //для работы с EEPROM
 #define ADDRESS_SERVPLANT_MIN 0
 #define ADDRESS_SERVPLANT_MAX ADDRESS_SERVPLANT_MIN + sizeof(int)
@@ -31,8 +32,6 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 
 #define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс)
-
-#define SERVO_CONST 4.28 //коэффициент для пересчёта углов серв с мкс в "тики"
 
 //подключение серв (выводы pca)
 #define SERVO_BUCKET_CH  7
@@ -84,8 +83,10 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define note_b 466
 #endif
 
-//Значение времени, через которое робот перейдёт в состояние бездействия
-#define MAXCOUNT_PAUSE 350*2  //350 = 30c
+//время в миллисекундах
+#define TIME_STANDSTILL_MAX 30000 //через которое робот перейдёт в режим бездействия
+#define TIME_STANDSTILLLONG_MAX 30000 //промежуток времени, через которое робот напоминает о бездействии
+#define TIME_PAUSE_MAX  5000  //на ожидание подтверждения (режим калибровки) 
 
 //Режимы работы джойстика (раскомментировать нужное)
 //- pressures = аналоговое считывание нажатия кнопок
@@ -116,7 +117,6 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
 
-
 //Состояния робота
 #define state_tired 0
 #define state_go  1
@@ -129,19 +129,17 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define state_pause 8
 #define state_calibration 9
 
-
 int motorspeed = SPEED_MIN;
 int count_ADC = MAXCOUNT_ADC;
-unsigned int count_pause  = 0;
+unsigned long time_standstill, time_pause, time_standstill_long;
 int pulselen_bucket = SERVO_CENTRAL;
 int pulselen_bucketud = SERVO_CENTRAL;
 int pulselen_plow, pulselen_plant;
 float mcu_voltage, mcu_current;
-unsigned char robo_state = state_notmove;
+unsigned char robo_state = state_notmove, flag = 0;
 unsigned char state_plow = 0, outstr, servo_ch = 0, address_max, address_min;
 unsigned int SERVO_BUCKET_MIN, SERVO_BUCKET_MAX, SERVO_BUCKETUD_MIN, SERVO_BUCKETUD_MAX, SERVO_PLOW_MIN,
          SERVO_PLOW_MAX, SERVO_PLANT_MIN, SERVO_PLANT_MAX, calibration = SERVO_CENTRAL;
-
 
 //Создание класса для джойстика
 PS2X ps2x;
@@ -173,7 +171,7 @@ void setup() {
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
 
-  //Значения границ сервы диспенсера считываются из энергонезависимой памяти
+  //Значения границ серв считываются из энергонезависимой памяти
   EEPROM.get(ADDRESS_SERVPLANT_MAX, SERVO_PLANT_MAX);
   EEPROM.get(ADDRESS_SERVPLANT_MIN, SERVO_PLANT_MIN);
 
@@ -185,7 +183,6 @@ void setup() {
 
   EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
   EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
-
 
 #ifdef BEEP_ON
   //мелодия включения
@@ -205,6 +202,8 @@ void setup() {
 
   //Центровка серв
   ServCenter();
+
+  time_standstill = millis(); //запомнить время последнего действия
 }
 
 
@@ -251,8 +250,38 @@ void loop()
   {
     if (robo_state == state_calibration)  //РЕЖИМ КАЛИБРОВКИ
     {
+      //Запрос на очистку EEPROM
+      if (ps2x.Button(PSB_L3) & ps2x.Button(PSB_R3)& ps2x.Button(PSB_R1)& ps2x.Button(PSB_L1))
+      {
+        flag = 1;
+        time_pause = millis();
+      }
 
-      if (ps2x.ButtonPressed(PSB_R1))
+      //Очистка EEPROM
+      if ((flag == 1) & ((millis() - time_pause) < TIME_PAUSE_MAX))
+      {
+        beep_not();
+        if (ps2x.Button(PSB_SQUARE))
+        {
+          PrintText("EEPROM Clear", 3);
+          for (unsigned int i = 0; i < 1024; i++)
+          {
+            EEPROM.update(i, 255);
+          }
+          delay(500);
+          flag = 0;
+
+#ifdef BEEP_ON
+          beep(note_g, 300);
+          noTone(BUZZER);
+#else
+          beep(1, 300);
+#endif
+        }
+      }
+      else flag = 0;
+
+      if (ps2x.ButtonPressed(PSB_R1)) //переключение сервы
       {
         servo_ch++;
         servo_ch = constrain(servo_ch, SERVO_MIN_CH, SERVO_MAX_CH);
@@ -260,7 +289,7 @@ void loop()
         pwm.setPWM(servo_ch, 0, calibration);
       }
 
-      if (ps2x.ButtonPressed(PSB_L1))
+      if (ps2x.ButtonPressed(PSB_L1)) //переключение сервы
       {
         servo_ch--;
         servo_ch = constrain(servo_ch, SERVO_MIN_CH, SERVO_MAX_CH);
@@ -268,7 +297,7 @@ void loop()
         pwm.setPWM(servo_ch, 0, calibration);
       }
 
-      if (ps2x.Button(PSB_L3) | ps2x.Button(PSB_R3)) //центровка сервы
+      if (ps2x.Button(PSB_L3) | ps2x.Button(PSB_R3)) //центровка выбранной сервы
       {
         calibration = SERVO_CENTRAL;
         pwm.setPWM(servo_ch, 0, calibration);
@@ -276,7 +305,7 @@ void loop()
       }
 
 
-      if (ps2x.Button(PSB_PAD_RIGHT) | ps2x.Button(PSB_PAD_DOWN))
+      if (ps2x.Button(PSB_PAD_DOWN))  //уменьшение скважности управляющего сигнала
       {
         calibration--;
         pwm.setPWM(servo_ch, 0, calibration);
@@ -284,14 +313,14 @@ void loop()
       }
 
 
-      if (ps2x.Button(PSB_PAD_LEFT) | ps2x.Button(PSB_PAD_UP))
+      if (ps2x.Button(PSB_PAD_UP))  //увеличение скважности управляющего сигнала
       {
         calibration++;
         pwm.setPWM(servo_ch, 0, calibration);
         delay(SERVO_DELAY);
       }
 
-      if (ps2x.ButtonPressed(PSB_SQUARE) | ps2x.ButtonPressed(PSB_TRIANGLE)) //найдено крайнее левое (верхнее) положение сервы
+      if (ps2x.ButtonPressed(PSB_TRIANGLE)) //найдено максимальное положение сервы
       {
         EEPROM.put(address_max, calibration);
 
@@ -304,7 +333,7 @@ void loop()
 
       }
 
-      if (ps2x.ButtonPressed(PSB_CIRCLE) | ps2x.ButtonPressed(PSB_CROSS)) //найдено крайнее правое (нижнее) положение сервы
+      if (ps2x.ButtonPressed(PSB_CROSS)) //найдено минимальное положение сервы
       {
         EEPROM.put(address_min, calibration);
 
@@ -340,6 +369,8 @@ void loop()
 #else
         beep(1, 500);
 #endif
+        ServCenter();
+        time_standstill = millis();
       }
 
       switch (servo_ch)
@@ -383,10 +414,12 @@ void loop()
 
     else
     {
+      //РАБОЧИЙ РЕЖИМ
       //Вход в режим калибровки
       if (ps2x.Button(PSB_L3)&ps2x.Button(PSB_R3))
       {
         robo_state = state_calibration;
+        servo_ch = 0;
 #ifdef BEEP_ON
         beep(note_f, 200);
         beep(note_f, 200);
@@ -396,7 +429,7 @@ void loop()
         beep(2, 200);
         beep(1, 350);
 #endif
-        count_pause = 0;
+        time_standstill = millis();
       }
 
       // ВВЕРХ нажато (движение вперёд)
@@ -405,7 +438,7 @@ void loop()
         SetSpeedRight(motorspeed);
         SetSpeedLeft(motorspeed);
         robo_state = state_go;
-        count_pause = 0;
+        time_standstill = millis();
       }
 
       //ВНИЗ нажато (движение назад)
@@ -415,7 +448,7 @@ void loop()
 
         SetSpeedRight(-motorspeed);
         SetSpeedLeft(-motorspeed);
-        count_pause = 0;
+        time_standstill = millis();
       }
 
       // Крестовина отпущена и не запущен режим калибровки
@@ -425,30 +458,33 @@ void loop()
       {
 
         StopMotors();
-        if (count_pause < MAXCOUNT_PAUSE)
+        if (millis() - time_standstill < TIME_STANDSTILL_MAX) 
           robo_state = state_notmove;
+
         //не нажата ни одна кнопка действия
         if ((ps2x.Button(PSB_TRIANGLE) == false) & (ps2x.Button(PSB_CROSS) == false) &
             (ps2x.Button(PSB_CIRCLE) == false) & (ps2x.Button(PSB_SQUARE) == false))
         {
-          if (count_pause < MAXCOUNT_PAUSE)
-            count_pause++;
 
-          if (count_pause == MAXCOUNT_PAUSE)
+          if (millis() - time_standstill >= TIME_STANDSTILL_MAX)  //бездействие
           {
             robo_state = state_pause;
+
+            if (millis() - time_standstill_long >= TIME_STANDSTILLLONG_MAX) //напоминание о бездействии
+            {
 #ifdef BEEP_ON
-            //мелодия
-            beep(note_g, 300);
-            beep(note_g, 150);
-            beep(note_f, 150);
-            beep(note_e, 150);
-            beep(note_a, 300);
-            noTone(BUZZER);
+              //мелодия
+              beep(note_g, 300);
+              beep(note_g, 150);
+              beep(note_f, 150);
+              beep(note_e, 150);
+              beep(note_a, 300);
+              noTone(BUZZER);
 #else
-            beep(3, 100);
+              beep(3, 100);
 #endif
-            count_pause++;
+              time_standstill_long = millis();
+            }
           }
         }
       }
@@ -459,7 +495,7 @@ void loop()
         robo_state = state_turnright;
         SetSpeedRight(-motorspeed);
         SetSpeedLeft(motorspeed);
-        count_pause = 0;
+        time_standstill = millis();
       }
 
       //ВЛЕВО нажато (поворот)
@@ -468,7 +504,7 @@ void loop()
         robo_state = state_turnleft;
         SetSpeedRight(motorspeed);
         SetSpeedLeft(-motorspeed);
-        count_pause = 0;
+        time_standstill = millis();
       }
 
       //vibrate = ps2x.Analog(PSAB_CROSS);  //Скорость вибрации устанавливаеться в зависимости от силы нажатия кнопки (X)
@@ -476,7 +512,7 @@ void loop()
       // L2 нажата (плуг)
       if (ps2x.ButtonPressed(PSB_L2))
       {
-        count_pause = 0;
+        time_standstill = millis();
         robo_state = state_servoaction;
         if ((SERVO_PLOW_MAX == 65535) | (SERVO_PLOW_MIN == 65535))
         {
@@ -513,9 +549,9 @@ void loop()
       //L1 (диспенсер)
       if (ps2x.ButtonPressed(PSB_L1))
       {
-        count_pause = 0;
+        time_standstill = millis();
 
-        //проверка флагов значений границ сервы диспенсера
+        //проверка значений границ сервы диспенсера
         if ((SERVO_PLANT_MAX == 65535) | (SERVO_PLANT_MIN == 65535))
         {
           beep_not();
@@ -540,17 +576,15 @@ void loop()
         }
       }
 
-
       // R1 нажата (увеличение скорости)
       if (ps2x.ButtonPressed(PSB_R1))
       {
-        count_pause = 0;
+        time_standstill = millis();
         if (motorspeed < (SPEED_MAX - Dspeed_const))
         {
           motorspeed = motorspeed + Dspeed_const;
 
 #ifdef BEEP_ON
-          //мелодия
           beep(note_f, 50);
           beep(note_a, 50);
           noTone(BUZZER);
@@ -563,7 +597,6 @@ void loop()
           motorspeed = SPEED_MAX;
 
 #ifdef BEEP_ON
-          //мелодия
           beep(note_a, 100);
           beep(note_a, 50);
           beep(note_a, 100);
@@ -579,13 +612,12 @@ void loop()
       // R2 нажата (уменьшение скорости)
       if (ps2x.ButtonPressed(PSB_R2))
       {
-        count_pause = 0;
+        time_standstill = millis();
         if (motorspeed > (SPEED_MIN + Dspeed_const))
         {
           motorspeed = motorspeed - Dspeed_const;
 
 #ifdef BEEP_ON
-          //мелодия
           beep(note_a, 50);
           beep(note_f, 50);
           noTone(BUZZER);
@@ -598,7 +630,6 @@ void loop()
           motorspeed = SPEED_MIN;
 
 #ifdef BEEP_ON
-          //мелодия
           beep(note_f, 100);
           beep(note_f, 50);
           beep(note_f, 100);
@@ -614,7 +645,7 @@ void loop()
       // Треугольник нажат (ковш вверх)
       if (ps2x.Button(PSB_TRIANGLE))
       {
-        count_pause = 0;
+        time_standstill = millis();
         if (SERVO_BUCKETUD_MIN == 65535)
         {
           beep_not();
@@ -636,7 +667,7 @@ void loop()
       //Х нажат (ковш вниз)
       if (ps2x.Button(PSB_CROSS))
       {
-        count_pause = 0;
+        time_standstill = millis();
         if (SERVO_BUCKETUD_MAX == 65535)
         {
           beep_not();
@@ -658,7 +689,7 @@ void loop()
       //Круг нажат (захват)
       if (ps2x.Button(PSB_CIRCLE))
       {
-        count_pause = 0;
+        time_standstill = millis();
 
         if (SERVO_BUCKET_MAX == 65535)
         {
@@ -680,7 +711,7 @@ void loop()
       //Квадрат нажат (захват)
       if (ps2x.Button(PSB_SQUARE))
       {
-        count_pause = 0;
+        time_standstill = millis();
         if (SERVO_BUCKET_MIN == 65535)
         {
           beep_not();
@@ -703,7 +734,7 @@ void loop()
       //Проверка состояния робота
       switch (robo_state)
       {
-        case state_tired:
+        case state_tired: //недостаточный заряд
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
@@ -714,7 +745,7 @@ void loop()
             robo_state = state_notmove;
             break;
           }
-        case state_highcurrent:
+        case state_highcurrent: //превышение тока
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_tired, imageWidth, imageHeight, 1);
@@ -722,7 +753,7 @@ void loop()
 
             StopMotors();
 
-            pwm.setPWM(SERVO_PLANT_CH, 0, 0); //SERVO_PLANT_MAX
+            pwm.setPWM(SERVO_PLANT_CH, 0, 0);
             pwm.setPWM(SERVO_PLOW_CH, 0, 0);
             pwm.setPWM(SERVO_BUCKET_CH, 0, 0);
             pwm.setPWM(SERVO_BUCKETUD_CH, 0, 0);
@@ -732,49 +763,49 @@ void loop()
             robo_state = state_notmove;
             break;
           }
-        case state_go:
+        case state_go:  //движение вперёд
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_up, imageWidth, imageHeight, 1);
             display.display();
             break;
           }
-        case state_goback:
+        case state_goback:  //движение назад
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_down, imageWidth, imageHeight, 1);
             display.display();
             break;
           }
-        case state_turnleft:
+        case state_turnleft:  //поворот влево
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_left, imageWidth, imageHeight, 1);
             display.display();
             break;
           }
-        case state_turnright:
+        case state_turnright: //поворот вправо
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_right, imageWidth, imageHeight, 1);
             display.display();
             break;
           }
-        case state_servoaction:
+        case state_servoaction: //действие механизмов
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_difficult, imageWidth, imageHeight, 1);
             display.display();
             break;
           }
-        case state_pause:
+        case state_pause: //длительное бездействие
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_wow, imageWidth, imageHeight, 1);
             display.display();
             break;
           }
-        case state_notmove:
+        case state_notmove: //нет движения
           {
             display.clearDisplay();
             display.drawBitmap(0, 0,  eyes_cute, imageWidth, imageHeight, 1);
@@ -845,7 +876,7 @@ void StopMotors()
 //центовка серв
 void ServCenter()
 {
-  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL); //SERVO_PLANT_MAX
+  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
   pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
   pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
   pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);
@@ -874,7 +905,7 @@ void beep(unsigned char num, unsigned int tim)
 }
 #endif
 
-void beep_not()
+void beep_not() //мелодия предупреждения
 {
 #ifdef BEEP_ON
   //мелодия

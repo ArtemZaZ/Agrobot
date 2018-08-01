@@ -8,11 +8,14 @@
 
 #include <pictures.h> //массивы изображений для дисплея
 
-//условие управляемого динамика (раскомментить, если тон динамика может управляться частотой сигнала)
-#ifndef BEEP_ON
-#define BEEP_ON
-#endif
+//версия платы (раскомментировать нужное)
+/*#ifndef version_1.0
+  #define version_1.0
+  #endif*/
 
+#ifndef version_1.1
+#define version_1.1
+#endif
 
 //для работы с EEPROM
 #define ADDRESS_SERVPLANT_MIN 0
@@ -73,7 +76,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define DELTAY 2
 
 //ноты
-#ifdef BEEP_ON
+#ifdef version_1.1
 #define note_c 261
 #define note_d 294
 #define note_e 329
@@ -184,14 +187,16 @@ void setup() {
   EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
   EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
 
-#ifdef BEEP_ON
+#ifdef version_1.1
   //мелодия включения
   beep(note_c, 400);
   beep(note_e, 350);
   beep(note_g, 150);
   beep(note_b, 400);
   noTone(BUZZER);
-#else
+#endif
+
+#ifdef version_1.0
   beep(1, 500);
 #endif
 
@@ -229,13 +234,15 @@ void loop()
   {
     robo_state = state_tired;
 
-#ifdef BEEP_ON
+#ifdef version_1.1
     beep(note_b, 400);
     beep(note_g, 350);
     beep(note_e, 150);
     beep(note_c, 400);
     noTone(BUZZER);
-#else
+#endif
+
+#ifdef version_1.0
     beep(2, 100);
 #endif
   }
@@ -271,10 +278,11 @@ void loop()
           delay(500);
           flag = 0;
 
-#ifdef BEEP_ON
+#ifdef version_1.1
           beep(note_g, 300);
           noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
           beep(1, 300);
 #endif
         }
@@ -324,23 +332,25 @@ void loop()
       {
         EEPROM.put(address_max, calibration);
 
-#ifdef BEEP_ON
+#ifdef version_1.1
         beep(note_c, 200);
         noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
         beep(1, 200);
 #endif
-
       }
 
       if (ps2x.ButtonPressed(PSB_CROSS)) //найдено минимальное положение сервы
       {
         EEPROM.put(address_min, calibration);
 
-#ifdef BEEP_ON
+
+#ifdef version_1.1
         beep(note_b, 200);
         noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
         beep(1, 200);
 #endif
       }
@@ -361,12 +371,14 @@ void loop()
         EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
         EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
 
-#ifdef BEEP_ON
+#ifdef version_1.1
         beep(note_c, 300);
         beep(note_g, 300);
         beep(note_b, 300);
         noTone(BUZZER);
-#else
+#endif
+
+#ifdef version_1.0
         beep(1, 500);
 #endif
         ServCenter();
@@ -409,7 +421,6 @@ void loop()
             break;
           }
       }
-
     }
 
     else
@@ -420,12 +431,14 @@ void loop()
       {
         robo_state = state_calibration;
         servo_ch = 0;
-#ifdef BEEP_ON
+
+#ifdef version_1.1
         beep(note_f, 200);
         beep(note_f, 200);
         beep(note_c, 350);
         noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
         beep(2, 200);
         beep(1, 350);
 #endif
@@ -458,7 +471,7 @@ void loop()
       {
 
         StopMotors();
-        if (millis() - time_standstill < TIME_STANDSTILL_MAX) 
+        if (millis() - time_standstill < TIME_STANDSTILL_MAX)
           robo_state = state_notmove;
 
         //не нажата ни одна кнопка действия
@@ -472,7 +485,8 @@ void loop()
 
             if (millis() - time_standstill_long >= TIME_STANDSTILLLONG_MAX) //напоминание о бездействии
             {
-#ifdef BEEP_ON
+
+#ifdef version_1.1
               //мелодия
               beep(note_g, 300);
               beep(note_g, 150);
@@ -480,7 +494,8 @@ void loop()
               beep(note_e, 150);
               beep(note_a, 300);
               noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
               beep(3, 100);
 #endif
               time_standstill_long = millis();
@@ -584,11 +599,13 @@ void loop()
         {
           motorspeed = motorspeed + Dspeed_const;
 
-#ifdef BEEP_ON
+
+#ifdef version_1.1
           beep(note_f, 50);
           beep(note_a, 50);
           noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
           beep(2, 50);
 #endif
         }
@@ -596,12 +613,13 @@ void loop()
         {
           motorspeed = SPEED_MAX;
 
-#ifdef BEEP_ON
+#ifdef version_1.1
           beep(note_a, 100);
           beep(note_a, 50);
           beep(note_a, 100);
           noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
           beep(1, 100);
           beep(1, 50);
           beep(1, 100);
@@ -617,11 +635,13 @@ void loop()
         {
           motorspeed = motorspeed - Dspeed_const;
 
-#ifdef BEEP_ON
+
+#ifdef version_1.1
           beep(note_a, 50);
           beep(note_f, 50);
           noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
           beep(1, 50);
 #endif
         }
@@ -629,12 +649,13 @@ void loop()
         {
           motorspeed = SPEED_MIN;
 
-#ifdef BEEP_ON
+#ifdef version_1.1
           beep(note_f, 100);
           beep(note_f, 50);
           beep(note_f, 100);
           noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
           beep(1, 100);
           beep(1, 50);
           beep(1, 100);
@@ -885,14 +906,17 @@ void ServCenter()
   pulselen_bucketud = SERVO_CENTRAL;
 }
 
-#ifdef BEEP_ON
+
+#ifdef version_1.1
 //для проигрывания тона
 void beep(int ton, int tim)
 {
   tone(BUZZER, ton, tim);
   delay(tim + 20);
 }
-#else
+#endif
+
+#ifdef version_1.0
 void beep(unsigned char num, unsigned int tim)
 {
   for (unsigned char num_i = 0; num_i < num; num_i++)
@@ -907,13 +931,14 @@ void beep(unsigned char num, unsigned int tim)
 
 void beep_not() //мелодия предупреждения
 {
-#ifdef BEEP_ON
+#ifdef version_1.1
   //мелодия
   beep(note_g, 50);
   beep(note_e, 50);
   beep(note_c, 50);
   noTone(BUZZER);
-#else
+#endif
+#ifdef version_1.0
   beep(3, 100);
 #endif
 }

@@ -8,14 +8,15 @@
 
 #include <pictures.h> //массивы изображений для дисплея
 
-//версия платы (раскомментировать нужное)
-/*#ifndef version_1.0
-  #define version_1.0
-  #endif*/
 
-#ifndef version_1.1
-#define version_1.1
+//версия платы (лишнее заключается в конструкцию /* */ [остаётся только верное условие])
+/*#ifndef version_1_0
+  #define version_1_0
+  #endif*/
+#ifndef version_1_1
+#define version_1_1
 #endif
+
 
 //для работы с EEPROM
 #define ADDRESS_SERVPLANT_MIN 0
@@ -34,22 +35,22 @@
 //сервы
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 
-#define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс)
+#define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс) [не подлежит изменению]
 
-//подключение серв (выводы pca)
+//подключение серв (выводы/каналы pca)
 #define SERVO_BUCKET_CH  7
 #define SERVO_BUCKETUD_CH 6
 #define SERVO_PLOW_CH  5
 #define SERVO_PLANT_CH 4
 
-#define SERVO_MAX_CH  7
-#define SERVO_MIN_CH  4
+#define SERVO_MAX_CH  7 //самый большой по счёту занятый канал
+#define SERVO_MIN_CH  4 //самый меньший по счёту занятый канал
 
-#define DSERVO_const 5 //шаг изменения положения
+#define DSERVO_const 5 //шаг изменения положения сервы
 #define SERVO_FREQ 60 //частота ШИМ (~57Гц)
 #define SERVO_DELAY 3 //задержка для правильной работы
 
-//Динамик
+//Вывод, подключённый к динамику
 #define BUZZER 11
 
 //Выводы драйвера
@@ -76,7 +77,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define DELTAY 2
 
 //ноты
-#ifdef version_1.1
+#ifdef version_1_1
 #define note_c 261
 #define note_d 294
 #define note_e 329
@@ -100,23 +101,23 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define rumble      false
 
 //параметры изображения на дисплее
-#define imageWidth 128
-#define imageHeight 64
+#define imageWidth 128  //ширина в пикселях
+#define imageHeight 64  //высота в пикселях
 
 //регулирование скорости
-#define SPEED_MIN 90
-#define SPEED_MAX 255
-#define Dspeed_const 30 //константа приращения
+#define SPEED_MIN 90  //наименьшее допустимое значение 90
+#define SPEED_MAX 255 //наибольшее допустимое значение 255
+#define Dspeed_const 30 //константа приращения (шаг изменения скорости)
 
 //для АЦП
-#define UAREF 5.0 //опорное напряжение
-#define ADC_MAX 1024 //максимальная разрядность
+#define UAREF 5.0 //опорное напряжение [не подлежит изменению]
+#define ADC_MAX 1024 //максимальная разрядность [не подлежит изменению]
 //выводы считывания
 #define ADC_PIN_VOLTAGE A1
 #define ADC_PIN_CURRENT A0
 #define DEL_CONST 1 //константа делителя напряжения
 #define MAXCOUNT_ADC 15 //задержка преобразования АЦП
-#define MAX_MCU_CURRENT 5 //максимальный ток (5А)
+#define MAX_MCU_CURRENT 5 //максимальный ток, при превышении которого срабатывает защита (5А)
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
 
@@ -162,6 +163,9 @@ void setup() {
   pinMode(BUZZER, OUTPUT);
   noTone(BUZZER);
 
+  pinMode(A4, INPUT_PULLUP);
+  pinMode(A5, INPUT_PULLUP);
+ 
   pwm.begin();
   pwm.setPWMFreq(SERVO_FREQ);  // Установка частоты ШИМ
 
@@ -187,7 +191,7 @@ void setup() {
   EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
   EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
 
-#ifdef version_1.1
+#ifdef version_1_1
   //мелодия включения
   beep(note_c, 400);
   beep(note_e, 350);
@@ -196,7 +200,7 @@ void setup() {
   noTone(BUZZER);
 #endif
 
-#ifdef version_1.0
+#ifdef version_1_0
   beep(1, 500);
 #endif
 
@@ -234,7 +238,7 @@ void loop()
   {
     robo_state = state_tired;
 
-#ifdef version_1.1
+#ifdef version_1_1
     beep(note_b, 400);
     beep(note_g, 350);
     beep(note_e, 150);
@@ -242,7 +246,7 @@ void loop()
     noTone(BUZZER);
 #endif
 
-#ifdef version_1.0
+#ifdef version_1_0
     beep(2, 100);
 #endif
   }
@@ -255,7 +259,8 @@ void loop()
 
   else
   {
-    if (robo_state == state_calibration)  //РЕЖИМ КАЛИБРОВКИ
+    //РЕЖИМ КАЛИБРОВКИ
+    if (robo_state == state_calibration)  
     {
       //Запрос на очистку EEPROM
       if (ps2x.Button(PSB_L3) & ps2x.Button(PSB_R3)& ps2x.Button(PSB_R1)& ps2x.Button(PSB_L1))
@@ -278,11 +283,11 @@ void loop()
           delay(500);
           flag = 0;
 
-#ifdef version_1.1
+#ifdef version_1_1
           beep(note_g, 300);
           noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
           beep(1, 300);
 #endif
         }
@@ -332,11 +337,11 @@ void loop()
       {
         EEPROM.put(address_max, calibration);
 
-#ifdef version_1.1
+#ifdef version_1_1
         beep(note_c, 200);
         noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
         beep(1, 200);
 #endif
       }
@@ -346,11 +351,11 @@ void loop()
         EEPROM.put(address_min, calibration);
 
 
-#ifdef version_1.1
+#ifdef version_1_1
         beep(note_b, 200);
         noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
         beep(1, 200);
 #endif
       }
@@ -371,14 +376,14 @@ void loop()
         EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
         EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
 
-#ifdef version_1.1
+#ifdef version_1_1
         beep(note_c, 300);
         beep(note_g, 300);
         beep(note_b, 300);
         noTone(BUZZER);
 #endif
 
-#ifdef version_1.0
+#ifdef version_1_0
         beep(1, 500);
 #endif
         ServCenter();
@@ -432,13 +437,13 @@ void loop()
         robo_state = state_calibration;
         servo_ch = 0;
 
-#ifdef version_1.1
+#ifdef version_1_1
         beep(note_f, 200);
         beep(note_f, 200);
         beep(note_c, 350);
         noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
         beep(2, 200);
         beep(1, 350);
 #endif
@@ -486,7 +491,7 @@ void loop()
             if (millis() - time_standstill_long >= TIME_STANDSTILLLONG_MAX) //напоминание о бездействии
             {
 
-#ifdef version_1.1
+#ifdef version_1_1
               //мелодия
               beep(note_g, 300);
               beep(note_g, 150);
@@ -495,7 +500,7 @@ void loop()
               beep(note_a, 300);
               noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
               beep(3, 100);
 #endif
               time_standstill_long = millis();
@@ -600,12 +605,12 @@ void loop()
           motorspeed = motorspeed + Dspeed_const;
 
 
-#ifdef version_1.1
+#ifdef version_1_1
           beep(note_f, 50);
           beep(note_a, 50);
           noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
           beep(2, 50);
 #endif
         }
@@ -613,13 +618,13 @@ void loop()
         {
           motorspeed = SPEED_MAX;
 
-#ifdef version_1.1
+#ifdef version_1_1
           beep(note_a, 100);
           beep(note_a, 50);
           beep(note_a, 100);
           noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
           beep(1, 100);
           beep(1, 50);
           beep(1, 100);
@@ -636,12 +641,12 @@ void loop()
           motorspeed = motorspeed - Dspeed_const;
 
 
-#ifdef version_1.1
+#ifdef version_1_1
           beep(note_a, 50);
           beep(note_f, 50);
           noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
           beep(1, 50);
 #endif
         }
@@ -649,13 +654,13 @@ void loop()
         {
           motorspeed = SPEED_MIN;
 
-#ifdef version_1.1
+#ifdef version_1_1
           beep(note_f, 100);
           beep(note_f, 50);
           beep(note_f, 100);
           noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
           beep(1, 100);
           beep(1, 50);
           beep(1, 100);
@@ -907,7 +912,7 @@ void ServCenter()
 }
 
 
-#ifdef version_1.1
+#ifdef version_1_1
 //для проигрывания тона
 void beep(int ton, int tim)
 {
@@ -916,7 +921,7 @@ void beep(int ton, int tim)
 }
 #endif
 
-#ifdef version_1.0
+#ifdef version_1_0
 void beep(unsigned char num, unsigned int tim)
 {
   for (unsigned char num_i = 0; num_i < num; num_i++)
@@ -931,14 +936,14 @@ void beep(unsigned char num, unsigned int tim)
 
 void beep_not() //мелодия предупреждения
 {
-#ifdef version_1.1
+#ifdef version_1_1
   //мелодия
   beep(note_g, 50);
   beep(note_e, 50);
   beep(note_c, 50);
   noTone(BUZZER);
 #endif
-#ifdef version_1.0
+#ifdef version_1_0
   beep(3, 100);
 #endif
 }

@@ -1,44 +1,16 @@
 #include "config.h"
-#include <SPI.h>
+#include "pictures.h"
+/*#include <SPI.h>
 #include <Wire.h>
 #include <EEPROM.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <PS2X_lib.h>
-
-#include <pictures.h> //массивы изображений для дисплея
-
-
-//версия платы (лишнее закомментировать [оставить только одно условие])
-//#define version_1_0
-#define version_1_1
-
-
-//для работы с EEPROM
-#define ADDRESS_SERVPLANT_MIN 0
-#define ADDRESS_SERVPLANT_MAX ADDRESS_SERVPLANT_MIN + sizeof(int)
-
-#define ADDRESS_SERVPLOW_MIN  ADDRESS_SERVPLANT_MAX + sizeof(int)
-#define ADDRESS_SERVPLOW_MAX  ADDRESS_SERVPLOW_MIN + sizeof(int)
-
-#define ADDRESS_SERVBUCKETUD_MIN  ADDRESS_SERVPLOW_MAX + sizeof(int)
-#define ADDRESS_SERVBUCKETUD_MAX  ADDRESS_SERVBUCKETUD_MIN + sizeof(int)
-
-#define ADDRESS_SERVBUCKET_MIN  ADDRESS_SERVBUCKETUD_MAX + sizeof(int)
-#define ADDRESS_SERVBUCKET_MAX  ADDRESS_SERVBUCKET_MIN + sizeof(int)
-
-
+*/
+/*
 //сервы
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
-
-#define SERVO_CENTRAL 350  //центральное положение серв (1500 мкс) [не подлежит изменению]
-
-//подключение серв (выводы/каналы pca)
-#define SERVO_BUCKET_CH  7
-#define SERVO_BUCKETUD_CH 6
-#define SERVO_PLOW_CH  5
-#define SERVO_PLANT_CH 4
 
 #define SERVO_MAX_CH  7 //самый большой по счёту занятый канал
 #define SERVO_MIN_CH  4 //самый меньший по счёту занятый канал
@@ -46,9 +18,6 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализа�
 #define DSERVO_const 5 //шаг изменения положения сервы
 #define SERVO_FREQ 60 //частота ШИМ (~57Гц)
 #define SERVO_DELAY 3 //задержка для правильной работы
-
-//Вывод, подключённый к динамику
-#define BUZZER 11
 
 //Выводы драйвера
 #define MOTOR_ENA   10
@@ -58,67 +27,31 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализа�
 #define MOTOR_IN2A  4
 #define MOTOR_IN2B  A3
 
-//Выводы джойстика
-#define PS2_DAT        5
-#define PS2_CMD        6
-#define PS2_SEL        7
-#define PS2_CLK        8
-
-//Для дисплея
-#define OLED_RESET 4
 Adafruit_SSD1306 display(OLED_RESET);
 
 #define NUMFLAKES 10
 #define XPOS 0
 #define YPOS 1
 #define DELTAY 2
+*/
 
-//ноты
-#ifdef version_1_1
-#define note_c 261
-#define note_d 294
-#define note_e 329
-#define note_f 349
-#define note_g 391
-#define note_a 440
-#define note_b 466
-#endif
 
-//время в миллисекундах
-#define TIME_STANDSTILL_MAX 30000 //через которое робот перейдёт в режим бездействия
-#define TIME_STANDSTILLLONG_MAX 30000 //промежуток времени, через которое робот напоминает о бездействии
-#define TIME_PAUSE_MAX  5000  //на ожидание подтверждения (режим калибровки) 
+// cостояния робота пока просто переписал, не вдаваясь в подробности + потом запихаю, как статик в конечный автомат
+enum 
+{
+  TIRED,
+  GO,
+  GO_BACK,
+  TURN_LEFT,
+  TURN_RIGHT,
+  SERVO_ACTION,
+  NOT_MOVE,
+  HIGHT_CURRENT,
+  PAUSE,
+  CALIBRATION  
+} state;
 
-//Режимы работы джойстика (раскомментировать нужное)
-//- pressures = аналоговое считывание нажатия кнопок
-//- rumble    = вибромоторы
-#define pressures   true
-//#define pressures   false
-//#define rumble      true
-#define rumble      false
-
-//параметры изображения на дисплее
-#define imageWidth 128  //ширина в пикселях
-#define imageHeight 64  //высота в пикселях
-
-//регулирование скорости
-#define SPEED_MIN 90  //наименьшее допустимое значение 90
-#define SPEED_MAX 255 //наибольшее допустимое значение 255
-#define Dspeed_const 30 //константа приращения (шаг изменения скорости)
-
-//для АЦП
-#define UAREF 5.0 //опорное напряжение [не подлежит изменению]
-#define ADC_MAX 1024 //максимальная разрядность [не подлежит изменению]
-//выводы считывания
-#define ADC_PIN_VOLTAGE A1
-#define ADC_PIN_CURRENT A0
-#define DEL_CONST 1 //константа делителя напряжения
-#define MAXCOUNT_ADC 15 //задержка преобразования АЦП
-#define MAX_MCU_CURRENT 5 //максимальный ток, при превышении которого срабатывает защита (5А)
-#define MIN_MCU_VOLTAGE 3.3
-#define ADC_CURR_CONST 0.47
-
-//Состояния робота
+/*
 #define state_tired 0
 #define state_go  1
 #define state_goback  2
@@ -129,6 +62,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define state_highcurrent 7
 #define state_pause 8
 #define state_calibration 9
+*/
 
 int motorspeed = SPEED_MIN;
 int count_ADC = MAXCOUNT_ADC;

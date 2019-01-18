@@ -1,7 +1,11 @@
 #pragma once
-/* файл должен быть подключен в начале скетча */
+/* Файл переменной конфигурации 
+ * файл должен быть подключен в начале скетча 
+ */
 
 // определение всех нужных параметров
+// определение версии, если что-то координально меняется, т.е. не может быть изменено при попощи
+// данного файла - добавляйте новую версию, и в коде несовпадающие эл-ты помещайте в препроцессорные дериктивы ветвления версий
 #define VERSION 1 // версия 1 или 2
 
 // регулирование скорости
@@ -35,21 +39,23 @@
 # error "The selected version does not exist"
 #endif
 
-#if !(defined(SPEED_MIN) && defined(SPEED_MAX) && defined(SPEED_STEP))
+#if !(defined(SPEED_MIN) && defined(SPEED_MAX) && defined(SPEED_STEP))  // если не продефайнены значения скоростей
 # error "Speed parameters are not defined" 
 #endif
 
-#if !(defined(TIME_STAND_IDLE) && defined(TIME_STAND_IDLE_MAX))
+#if !(defined(TIME_STAND_IDLE) && defined(TIME_STAND_IDLE_MAX))   // если не продефайнены значения временных задержек
 # error "Time parameters are not defined"
 #endif
 
-#if !(defined(JOY_PRESSURES) && defined(JOY_RUMBLE))
+#if !(defined(JOY_PRESSURES) && defined(JOY_RUMBLE))  // если не продефайнены параметры джойстика
 # error "Joystick modes not defined" 
 #endif
 
-#if !(defined(SERVO_BUCKET_CH) && defined(SERVO_BUCKET_GRAB_CH) && defined(SERVO_PLOW_CH) && defined(SERVO_PLANT_CH))
+#if !(defined(SERVO_BUCKET_CH) && defined(SERVO_BUCKET_GRAB_CH) && defined(SERVO_PLOW_CH) && defined(SERVO_PLANT_CH)) // если не продефайнены каналы серв
 # error "Servo channels not defined" 
 #endif
 
+// подключаем фиксированные параметры, проверку не делаем, т.к. не меняем их
+#include "fixed.h"
 
 

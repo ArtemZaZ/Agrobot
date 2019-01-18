@@ -1,5 +1,6 @@
 #include "config.h"
 #include "pictures.h"
+#include "stdint.h"
 /*#include <SPI.h>
 #include <Wire.h>
 #include <EEPROM.h>
@@ -7,27 +8,12 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <PS2X_lib.h>
-*/
-/*
-//сервы
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 
 #define SERVO_MAX_CH  7 //самый большой по счёту занятый канал
 #define SERVO_MIN_CH  4 //самый меньший по счёту занятый канал
 
 #define DSERVO_const 5 //шаг изменения положения сервы
-#define SERVO_FREQ 60 //частота ШИМ (~57Гц)
 #define SERVO_DELAY 3 //задержка для правильной работы
-
-//Выводы драйвера
-#define MOTOR_ENA   10
-#define MOTOR_ENB   9
-#define MOTOR_IN1A  A2
-#define MOTOR_IN1B  13
-#define MOTOR_IN2A  4
-#define MOTOR_IN2B  A3
-
-Adafruit_SSD1306 display(OLED_RESET);
 
 #define NUMFLAKES 10
 #define XPOS 0
@@ -35,94 +21,144 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define DELTAY 2
 */
 
-
 // cостояния робота пока просто переписал, не вдаваясь в подробности + потом запихаю, как статик в конечный автомат
 enum 
 {
-  TIRED,
-  GO,
-  GO_BACK,
-  TURN_LEFT,
-  TURN_RIGHT,
-  SERVO_ACTION,
-  NOT_MOVE,
-  HIGHT_CURRENT,
-  PAUSE,
+  WORK,
   CALIBRATION  
 } state;
 
+
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
+Adafruit_SSD1306 display(OLED_RESET); // инициализация дисплея
+PS2X ps2x;  // cоздание экземпляра класса для джойстика
+
+
+uint8_t motorSpeed = SPEED_MIN;   // скорость мотора, текущая
+uint32_t adcCount = ADC_MAXCOUNT;  // ???
+uint32_t servoPlantMin = SERVO_CENTRAL_POSITION;   // минимальное положение диспенсора
+uint32_t servoPlantMax = SERVO_CENTRAL_POSITION;   // максимальное
+uint32_t servoPlowMin = SERVO_CENTRAL_POSITION;    // минимальное полпжение плуга
+uint32_t servoPlowMax = SERVO_CENTRAL_POSITION;    // максимальное
+uint32_t servoBucketMin = SERVO_CENTRAL_POSITION;  // минимальное положение ковша
+uint32_t servoBucketMax = SERVO_CENTRAL_POSITION;  // максимальное
+uint32_t servoBucketGrabMin = SERVO_CENTRAL_POSITION;  // минимальное положение схвата ковша
+uint32_t servoBucketGrabMax = SERVO_CENTRAL_POSITION;  // максимальное
+
+uint32_t bucketPulseLen = SERVO_CENTRAL_POSITION;  // ???
+uint32_t bucketGrabPulseLen = SERVO_CENTRAL_POSITION;
+uint32_t plowPulseLen = SERVO_CENTRAL_POSITION;
+uint32_t plantPulseLen = SERVO_CENTRAL_POSITION;
+
+uint64_t standIdleTimer; // таймер отсчета времени бездействия
+
+float mcuVoltage;  // текущее напряжение
+float mcuVurrent;  // текущий ток
+
 /*
-#define state_tired 0
-#define state_go  1
-#define state_goback  2
-#define state_turnleft  3
-#define state_turnright 4
-#define state_servoaction  5
-#define state_notmove 6
-#define state_highcurrent 7
-#define state_pause 8
-#define state_calibration 9
-*/
+unsigned long time_pause;
+unsigned long time_standstill_long;
 
-int motorspeed = SPEED_MIN;
-int count_ADC = MAXCOUNT_ADC;
-unsigned long time_standstill, time_pause, time_standstill_long;
-int pulselen_bucket = SERVO_CENTRAL;
-int pulselen_bucketud = SERVO_CENTRAL;
-int pulselen_plow, pulselen_plant;
-float mcu_voltage, mcu_current;
-unsigned char robo_state = state_notmove, flag = 0;
+unsigned char flag = 0;
 unsigned char state_plow = 0, outstr, servo_ch = 0, address_max, address_min;
-unsigned int SERVO_BUCKET_MIN, SERVO_BUCKET_MAX, SERVO_BUCKETUD_MIN, SERVO_BUCKETUD_MAX, SERVO_PLOW_MIN,
-         SERVO_PLOW_MAX, SERVO_PLANT_MIN, SERVO_PLANT_MAX, calibration = SERVO_CENTRAL;
-
-//Создание класса для джойстика
-PS2X ps2x;
+unsigned int calibration = SERVO_CENTRAL;
+         
 int error = 0;
 byte type = 0;
 byte vibrate = 0;
+*/
 
-void setup() {
+void motorSetup()   // инициализация моторов
+{
+  pinMode(MOTOR_ENABLE_A_CH, OUTPUT);
+  pinMode(MOTOR_ENABLE_B_CH, OUTPUT);
+  pinMode(MOTOR_PWM_A_CH, OUTPUT);
+  pinMode(MOTOR_PWM_B_CH, OUTPUT);
+  pinMode(MOTOR_PWM_INVERSE_A, OUTPUT);
+  pinMode(MOTOR_PWM_INVERSE_B, OUTPUT);
+}
 
-  //Настройка выводов
-  pinMode(MOTOR_ENA, OUTPUT);
-  pinMode(MOTOR_ENB, OUTPUT);
-  pinMode(MOTOR_IN1A, OUTPUT);
-  pinMode(MOTOR_IN1B, OUTPUT);
-  pinMode(MOTOR_IN2A, OUTPUT);
-  pinMode(MOTOR_IN2B, OUTPUT);
-  pinMode(BUZZER, OUTPUT);
-  noTone(BUZZER);
+void buzzerSetup()  // инициализация пищалки
+{
+  pinMode(BUZZER_CH, OUTPUT);
+  noTone(BUZZER_CH);
+}
 
-  pinMode(A4, INPUT_PULLUP);
-  pinMode(A5, INPUT_PULLUP);
- 
-  pwm.begin();
-  pwm.setPWMFreq(SERVO_FREQ);  // Установка частоты ШИМ
-
-  //Инициализация дисплея
+void displaySetup() // инициализация дисплея
+{
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // Инициализация I2C для дисплея с адресом 0x3D
   display.display();
   delay(2000); //задержка для инициализации дисплея
   display.clearDisplay(); // очистка дисплея
+}
+
+void servoCentering() // центрирование серв
+{
+  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);
+}
+
+void servoSetup() // инициализация серв
+{
+  pwm.begin();
+  pwm.setPWMFreq(SERVO_FREQ);  // Установка частоты ШИМ
+  servoCentering();
+}
+
+
+void calibrationFSM()   // режим калибровки
+{
+  static enum
+  {
+    
+  } state;
+
+  switch(state)
+  {
+    
+  }
+  
+}
+
+
+void workFSM()    // рабочий режим
+{
+  static enum
+  {
+
+  } state;
+
+  switch(state)
+  {
+
+  }
+}
+
+
+void setup() {
+  
+  pinMode(A4, INPUT_PULLUP);    // подтяжка линий I2C к питанию, мб и не надо 
+  pinMode(A5, INPUT_PULLUP);
 
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
-  error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
+  error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble); // что выдает error ????
 
   //Значения границ серв считываются из энергонезависимой памяти
-  EEPROM.get(ADDRESS_SERVPLANT_MAX, SERVO_PLANT_MAX);
-  EEPROM.get(ADDRESS_SERVPLANT_MIN, SERVO_PLANT_MIN);
+  EEPROM.get(EEPROM_ADDR_SERV_PLANT_MAX, servoPlantMax);
+  EEPROM.get(EEPROM_ADDR_SERV_PLANT_MIN, servoPlantMin);
 
-  EEPROM.get(ADDRESS_SERVPLOW_MAX, SERVO_PLOW_MAX);
-  EEPROM.get(ADDRESS_SERVPLOW_MIN, SERVO_PLOW_MIN);
+  EEPROM.get(EEPROM_ADDR_SERV_PLOW_MAX, servoPlowMax);
+  EEPROM.get(EEPROM_ADDR_SERV_PLOW_MIN, servoPlowMin);
 
-  EEPROM.get(ADDRESS_SERVBUCKET_MAX, SERVO_BUCKET_MAX);
-  EEPROM.get(ADDRESS_SERVBUCKET_MIN, SERVO_BUCKET_MIN);
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_MAX, servoBucketMax);
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_MIN, servoBucketMin);
 
-  EEPROM.get(ADDRESS_SERVBUCKETUD_MAX, SERVO_BUCKETUD_MAX);
-  EEPROM.get(ADDRESS_SERVBUCKETUD_MIN, SERVO_BUCKETUD_MIN);
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_GRAB_MAX, servoBucketGrabMax);
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_GRAB_MIN, servoBucketGrabMin);
 
-#ifdef version_1_1
+#if VERSION == 11
   //мелодия включения
   beep(note_c, 400);
   beep(note_e, 350);
@@ -131,31 +167,30 @@ void setup() {
   noTone(BUZZER);
 #endif
 
-#ifdef version_1_0
+#if VERSION == 10
   beep(1, 500);
 #endif
 
   //Serial.begin(9600);
 
-  //Настройка опорного напряжения для АЦП: внешний источник на выводе AREF
-  analogReference(EXTERNAL);
+  analogReference(EXTERNAL);  // настройка опорного напряжения для АЦП: внешний источник на выводе AREF
 
-  //Центровка серв
-  ServCenter();
+  servoSetup();
 
-  time_standstill = millis(); //запомнить время последнего действия
+  standIdleTimer = millis(); // запомнить время последнего действия
 }
+
 
 
 void loop()
 {
   //Опрос джойстика
-  ps2x.read_gamepad(false, vibrate); //считывание данных с джойстика и установка скорости вибрации
+  ps2x.read_gamepad(false, vibrate); // считывание данных с джойстика и установка скорости вибрации
 
   //Вычисление значения напряжения питания
-  if (count_ADC == MAXCOUNT_ADC)
+  if (adcCount == ADC_MAX_COUNT)
   {
-    count_ADC = 0;
+    adcCount = 0;
     mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
     //dtostrf(mcu_voltage, 4, 2, outstr); //преобразование флоат в строку 4 символа в строке, 2 знака после запятой
     mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
@@ -784,7 +819,6 @@ void PrintText(char STR[255], char textsize)
   display.setCursor(0, 16);
   display.println(STR);
   display.display();
-
 }
 
 //Запуск двигателей
@@ -828,18 +862,6 @@ void StopMotors()
   digitalWrite(MOTOR_IN1B, LOW);
   digitalWrite(MOTOR_IN2A, LOW);
   analogWrite(MOTOR_IN2B, 0);
-}
-
-//центовка серв
-void ServCenter()
-{
-  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);
-
-  pulselen_bucket = SERVO_CENTRAL;
-  pulselen_bucketud = SERVO_CENTRAL;
 }
 
 

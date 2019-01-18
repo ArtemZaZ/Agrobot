@@ -16,7 +16,15 @@
 
 
 #define SERVO_CENTRAL_POSITION  350  // центральное положение серв (1500 мкс)
+#define SERFO_FREQ  60  // частота ШИМ (~57Гц)
 
+// выводы драйвера моторов
+#define MOTOR_ENABLE_A_CH     10  // пин разрешающий работу мотора A
+#define MOTOR_ENABLE_B_CH     9   // пин разрешающий работу мотора B
+#define MOTOR_PWM_A_CH        A2  // канал ШИМа мотора А
+#define MOTOR_PWM_B_CH        13  // канал ШИМа мотора B
+#define MOTOR_PWM_INVERSE_A   4   // пин инвертирующий ШИМ на канале мотора А
+#define MOTOR_PWM_INVERSE_B   A3  // пин инвертирующий ШИМ на канале мотора B
 
 // выводы джойстика
 #define JOY_DAT_CH  5
@@ -46,10 +54,9 @@
 #define ADC_UAREF   5.0     // опорное напряжение
 #define ADC_MAX     1024    // максимальная разрядность
 #define ADC_VOLT_DIV_CONST  1 // константа делителя напряжения
-#define ADC_MAXCOUNT    15  // задержка преобразования АЦП
+#define ADC_MAX_COUNT    15  // задержка преобразования АЦП
 
-/*
 #define MAX_MCU_CURRENT 5 //максимальный ток, при превышении которого срабатывает защита (5А)
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
-*/
+

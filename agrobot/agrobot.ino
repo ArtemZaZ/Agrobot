@@ -211,6 +211,7 @@ void adcDataCounter(float* voltage, float* current)   // вычисление з
 
 bool calibrationFSM()   // режим калибровки, нетривиальный конечный автомат, где состояния управляются от одного лидера, состояния переключаются по нажатию кнопок джойстика 
 {
+  static int8_t servoCounter = 0;  // каретка, переключающаяся от сервы к серве (нужен знаковый)
   static enum   
   {
     LEAD,   // главный режим, отсюда идет переход ко всем остальным состояниям
@@ -227,35 +228,57 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
   switch(state)
   {
     case LEAD:
+      if (ps2x.Button(PSB_L3) && ps2x.Button(PSB_R3) && ps2x.Button(PSB_R1) && ps2x.Button(PSB_L1))   // очистка епрома
+      {
+        state = EEPROM_CLEAR;
+      }
 
+      if (ps2x.ButtonPressed(PSB_R1))
+      {
+        state = NEXT_SERVO;
+      }
+
+      if (ps2x.ButtonPressed(PSB_L1))
+      {
+        state = PREV_SERVO;
+      }
       return;
 
     case EEPROM_CLEAR:
-
+      // тут будет очистка епрома
+      state = LEAD;
       return;
 
-    case NEXT_SERVO:
-
+    case NEXT_SERVO:  // делаем кольцевой массив
+      servoCounter++;  
+      if (servoCounter >= (strlen(SERVO_ITERATED) - 1)) servoCounter = 0;
+      state = LEAD;      
       return;
 
     case PREV_SERVO:
-
+      servoCounter--;
+      if (servoCounter <= 0) servoCounter = strlen(SERVO_ITERATED) - 1; 
+      state = LEAD;
       return;
 
     case SERVO_MOVE_UP:
 
+      state = LEAD;
       return;
 
     case SERVO_MOVE_DOWN:
 
+      state = LEAD;
       return;
 
     case SERVO_FIND_MAX:
 
+      state = LEAD;
       return;
 
     case SERVO_FIND_MIN:
-      
+
+      state = LEAD;      
       return;
 
     case EXIT:
@@ -287,7 +310,7 @@ bool workFSM()    // рабочий режим
   switch(state)
   {
     case LEAD:
-
+      
       return;
 
     case FORWARD:
@@ -387,7 +410,7 @@ void setup() {
 
 void loop()
 {
-  static bool m_exit = false;
+  static bool m_exit = false; // доп переменная для хранения данных о выходе из некоторых конечных автоматов
   static enum 
   {
     WORK,

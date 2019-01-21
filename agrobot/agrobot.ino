@@ -21,13 +21,6 @@
 #define DELTAY 2
 */
 
-// cостояния робота пока просто переписал, не вдаваясь в подробности + потом запихаю, как статик в конечный автомат
-enum 
-{
-  WORK,
-  CALIBRATION  
-} state;
-
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 Adafruit_SSD1306 display(OLED_RESET); // инициализация дисплея
@@ -35,7 +28,6 @@ PS2X ps2x;  // cоздание экземпляра класса для джой
 
 
 uint8_t motorSpeed = SPEED_MIN;   // скорость мотора, текущая
-uint32_t adcCount = ADC_MAXCOUNT;  // ???
 uint32_t servoPlantMin = SERVO_CENTRAL_POSITION;   // минимальное положение диспенсора
 uint32_t servoPlantMax = SERVO_CENTRAL_POSITION;   // максимальное
 uint32_t servoPlowMin = SERVO_CENTRAL_POSITION;    // минимальное полпжение плуга
@@ -52,8 +44,8 @@ uint32_t plantPulseLen = SERVO_CENTRAL_POSITION;
 
 uint64_t standIdleTimer; // таймер отсчета времени бездействия
 
-float mcuVoltage;  // текущее напряжение
-float mcuVurrent;  // текущий ток
+//float mcuVoltage;  // текущее напряжение
+//float mcuVurrent;  // текущий ток
 
 /*
 unsigned long time_pause;
@@ -68,21 +60,24 @@ byte type = 0;
 byte vibrate = 0;
 */
 
+
 void motorSetup()   // инициализация моторов
 {
   pinMode(MOTOR_ENABLE_A_CH, OUTPUT);
   pinMode(MOTOR_ENABLE_B_CH, OUTPUT);
   pinMode(MOTOR_PWM_A_CH, OUTPUT);
   pinMode(MOTOR_PWM_B_CH, OUTPUT);
-  pinMode(MOTOR_PWM_INVERSE_A, OUTPUT);
-  pinMode(MOTOR_PWM_INVERSE_B, OUTPUT);
+  pinMode(MOTOR_PWM_INVERSE_A_CH, OUTPUT);
+  pinMode(MOTOR_PWM_INVERSE_B_CH, OUTPUT);
 }
+
 
 void buzzerSetup()  // инициализация пищалки
 {
   pinMode(BUZZER_CH, OUTPUT);
   noTone(BUZZER_CH);
 }
+
 
 void displaySetup() // инициализация дисплея
 {
@@ -92,13 +87,6 @@ void displaySetup() // инициализация дисплея
   display.clearDisplay(); // очистка дисплея
 }
 
-void servoCentering() // центрирование серв
-{
-  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);
-}
 
 void servoSetup() // инициализация серв
 {
@@ -108,31 +96,250 @@ void servoSetup() // инициализация серв
 }
 
 
-void calibrationFSM()   // режим калибровки
+void servoCentering() // центрирование серв
 {
-  static enum
-  {
-    
-  } state;
-
-  switch(state)
-  {
-    
-  }
-  
+  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);
 }
 
 
-void workFSM()    // рабочий режим
+void printText(uint8_t* str, uint8_t textsize)  //Вывод строки на дисплей
 {
-  static enum
-  {
+  display.clearDisplay();
+  display.setTextSize(textsize);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 16);
+  display.println(str);
+  display.display();
+}
 
+
+//Запуск двигателей 
+void setSpeedRight(int mspeed)  // первый двигатель - А
+{
+  if (mspeed > 0)   // если заданная скорость больше нуля, то задаем Прямой ШИМ без инвертирования
+  {
+    analogWrite(MOTOR_PWM_A_CH, 255);
+    digitalWrite(MOTOR_PWM_INVERSE_A_CH, LOW);
+  }
+  else    // если меньше, то инвертируем ШИМ !!!( по идее еще бы и значения инвертировать нужно)
+  {
+    digitalWrite(MOTOR_PWM_INVERSE_A_CH, HIGH);
+    analogWrite(MOTOR_PWM_A_CH, 0);
+  }
+  analogWrite(MOTOR_ENABLE_A_CH, abs(mspeed));    //!!! тут еще мб придется поиграть с заполнением, т.к. сейчас скорость в обратную сторону движения не будет совпадать с прямой
+}
+
+
+void SetSpeedLeft(int mspeed) // второй двигатель - B
+{
+  if (mspeed > 0)
+  {
+    digitalWrite(MOTOR_PWM_INVERSE_B_CH, HIGH);
+    analogWrite(MOTOR_PWM_B_CH, 0);
+  }
+  else
+  {
+    analogWrite(MOTOR_PWM_B_CH, 255);
+    digitalWrite(MOTOR_PWM_INVERSE_B_CH, LOW);
+  }
+  analogWrite(MOTOR_ENABLE_B_CH, abs(mspeed));    //!!! аналогично
+}
+
+
+void StopMotors()   // остановка двигателей
+{
+  analogWrite(MOTOR_PWM_A_CH, 0);
+  digitalWrite(MOTOR_PWM_INVERSE_A_CH, LOW);
+  digitalWrite(MOTOR_PWM_INVERSE_B_CH, LOW);
+  analogWrite(MOTOR_PWM_B_CH, 0);
+}
+
+
+#ifdef VERSION == 11
+void beep(uint32_t ton, uint32_t tim) // для проигрывания тона
+{
+  tone(BUZZER, ton, tim);
+  delay(tim + 20);
+}
+#endif
+
+
+#ifdef VERSION == 10
+void beep(uint8_t num, uint32_t tim)
+{
+  for (uint32_t i = 0; i < num; i++)
+  {
+    digitalWrite(BUZZER, HIGH);
+    delay(tim);
+    digitalWrite(BUZZER, LOW);
+    delay(50);
+  }
+}
+#endif
+
+
+void beepAlarm() // мелодия предупреждения
+{
+#ifdef VERSION == 11
+  //мелодия
+  beep(note_g, 50);
+  beep(note_e, 50);
+  beep(note_c, 50);
+  noTone(BUZZER);
+#endif
+#ifdef VERSION == 10
+  beep(3, 100);
+#endif
+}
+
+
+void adcDataCounter(float* voltage, float* current)   // вычисление значения напряжения питания и тока, запись в параметры
+{
+  static uint8_t adcCount = ADC_MAX_COUNT;  // ограничение по частоте считывания данных с АЦП
+  if (adcCount >= ADC_MAX_COUNT)
+  {
+    adcCount = 0;
+    *mcu_voltage = ADC_VOLT_DIV_CONST * analogRead(ADC_VOLTAGE_CH) * ADC_UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
+    *mcu_current = analogRead(ADC_CURRENT_CH) * ADC_UAREF / ADC_MAX / ADC_CURR_CONST;
+  }
+  adcCount++;
+}
+
+
+bool calibrationFSM()   // режим калибровки, нетривиальный конечный автомат, где состояния управляются от одного лидера, состояния переключаются по нажатию кнопок джойстика 
+{
+  static enum   
+  {
+    LEAD,   // главный режим, отсюда идет переход ко всем остальным состояниям
+    EEPROM_CLEAR,  // тут происходит очистка EEPROM
+    NEXT_SERVO, // переход к следующей серве
+    PREV_SERVO, // переход к предыдущей серве
+    SERVO_MOVE_UP,  // увеличение скважности ШИМа на серве
+    SERVO_MOVE_DOWN,  // уменьшение скважности ШИМа на серве
+    SERVO_FIND_MAX,   // находим максимальную скважность сервы, в одном из крайних положений
+    SERVO_FIND_MIN,   // находим минимальную скважность, в одном из крайних положений
+    EXIT   // выход из конечного автомата, переход к другому режиму
   } state;
 
   switch(state)
   {
+    case LEAD:
 
+      return;
+
+    case EEPROM_CLEAR:
+
+      return;
+
+    case NEXT_SERVO:
+
+      return;
+
+    case PREV_SERVO:
+
+      return;
+
+    case SERVO_MOVE_UP:
+
+      return;
+
+    case SERVO_MOVE_DOWN:
+
+      return;
+
+    case SERVO_FIND_MAX:
+
+      return;
+
+    case SERVO_FIND_MIN:
+      
+      return;
+
+    case EXIT:
+      return true;
+  }
+}
+
+
+bool workFSM()    // рабочий режим
+{
+  static enum
+  {
+    LEAD,  // управляющий режим
+    FORWARD,  // вперед
+    BACKWARD, // назад 
+    LEFT,   // влево
+    RIGHT,  // вправо
+    SPEED_UP, // уменьшение скорости
+    SPEED_DOWN,  // увеличение скорости
+    PLOW_SWITCH   // переключает состояние плуга
+    PLANT_ACTIVATION, // активация диспенсора 
+    BUCKET_UP,  // поднять ковш
+    BUCKET_DOWN,  // опустить ковш
+    BUCKET_GRAB_CLAMP,  // сжать схват 
+    BUCKET_GRAB_LOOSE,  // ослабить схват
+    EXIT  // переход к другому режиму 
+  } state;
+
+  switch(state)
+  {
+    case LEAD:
+
+      return;
+
+    case FORWARD:
+
+      return;
+
+    case BACKWARD:
+
+      return;
+
+    case LEFT:
+
+      return;
+
+    case RIGHT:
+
+      return;
+
+    case SPEED_UP:
+
+      return;
+
+    case SPEED_DOWN:
+
+      return;
+
+    case PLOW_SWITCH:
+      
+      return;
+
+     case PLANT_ACTIVATION:
+
+      return;
+
+    case BUCKET_UP:
+
+      return;
+
+    case BUCKET_DOWN:
+
+      return;
+
+    case BUCKET_GRAB_CLAMP:
+
+      return;
+
+    case BUCKET_GRAB_LOOSE:
+
+      return;
+
+    case EXIT:
+      return true;
   }
 }
 
@@ -171,8 +378,6 @@ void setup() {
   beep(1, 500);
 #endif
 
-  //Serial.begin(9600);
-
   analogReference(EXTERNAL);  // настройка опорного напряжения для АЦП: внешний источник на выводе AREF
 
   servoSetup();
@@ -180,48 +385,36 @@ void setup() {
   standIdleTimer = millis(); // запомнить время последнего действия
 }
 
-
-
 void loop()
 {
-  //Опрос джойстика
+  static bool m_exit = false;
+  static enum 
+  {
+    WORK,
+    CALIBRATION  
+  } state;
+  
+  switch(state)
+  {
+    case WORK:
+      m_exit = workFSM();
+      if(m_exit)  state = CALIBRATION
+      m_exit = false;
+      return;
+
+    case CALIBRATION:
+      m_exit = calibrationFSM();
+      if(m_exit)  state = WORK;
+      m_exit = false;
+      return;    
+  }
+}
+
+/*
+void loop()
+{
+  // опрос джойстика
   ps2x.read_gamepad(false, vibrate); // считывание данных с джойстика и установка скорости вибрации
-
-  //Вычисление значения напряжения питания
-  if (adcCount == ADC_MAX_COUNT)
-  {
-    adcCount = 0;
-    mcu_voltage = DEL_CONST * analogRead(ADC_PIN_VOLTAGE) * UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
-    //dtostrf(mcu_voltage, 4, 2, outstr); //преобразование флоат в строку 4 символа в строке, 2 знака после запятой
-    mcu_current = analogRead(ADC_PIN_CURRENT) * UAREF / ADC_MAX / ADC_CURR_CONST;
-    /*Serial.println(mcu_voltage);
-      Serial.println(mcu_current);*/
-  }
-  else count_ADC++;
-
-  //меньше порога достаточного заряда аккумулятора
-  if (mcu_voltage < MIN_MCU_VOLTAGE)
-  {
-    robo_state = state_tired;
-
-#ifdef version_1_1
-    beep(note_b, 400);
-    beep(note_g, 350);
-    beep(note_e, 150);
-    beep(note_c, 400);
-    noTone(BUZZER);
-#endif
-
-#ifdef version_1_0
-    beep(2, 100);
-#endif
-  }
-
-  //Если ток превышает максимальное значение
-  if (mcu_current > MAX_MCU_CURRENT)
-  {
-    robo_state = state_highcurrent;
-  }
 
   else
   {
@@ -229,7 +422,7 @@ void loop()
     if (robo_state == state_calibration)  
     {
       //Запрос на очистку EEPROM
-      if (ps2x.Button(PSB_L3) & ps2x.Button(PSB_R3)& ps2x.Button(PSB_R1)& ps2x.Button(PSB_L1))
+      if (ps2x.Button(PSB_L3) & ps2x.Button(PSB_R3) & ps2x.Button(PSB_R1) & ps2x.Button(PSB_L1))
       {
         flag = 1;
         time_pause = millis();
@@ -810,94 +1003,6 @@ void loop()
 }
 
 
-//Вывод слова на дисплей
-void PrintText(char STR[255], char textsize)
-{
-  display.clearDisplay();
-  display.setTextSize(textsize);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 16);
-  display.println(STR);
-  display.display();
+
 }
-
-//Запуск двигателей
-//Первый
-void SetSpeedRight(int mspeed)
-{
-  if (mspeed > 0)
-  {
-    analogWrite(MOTOR_IN1A, 255);
-    digitalWrite(MOTOR_IN1B, LOW);
-  }
-  else
-  {
-    digitalWrite(MOTOR_IN1B, HIGH);
-    analogWrite(MOTOR_IN1A, 0);
-  }
-  analogWrite(MOTOR_ENA, abs(mspeed));
-}
-
-//Второй
-void SetSpeedLeft(int mspeed)
-{
-  if (mspeed > 0)
-  {
-    digitalWrite(MOTOR_IN2A, HIGH);
-    analogWrite(MOTOR_IN2B, 0);
-  }
-  else
-  {
-    analogWrite(MOTOR_IN2B, 255);
-    digitalWrite(MOTOR_IN2A, LOW);
-  }
-  analogWrite(MOTOR_ENB, abs(mspeed));
-}
-
-
-//Остановка двигателей
-void StopMotors()
-{
-  analogWrite(MOTOR_IN1A, 0);
-  digitalWrite(MOTOR_IN1B, LOW);
-  digitalWrite(MOTOR_IN2A, LOW);
-  analogWrite(MOTOR_IN2B, 0);
-}
-
-
-#ifdef version_1_1
-//для проигрывания тона
-void beep(int ton, int tim)
-{
-  tone(BUZZER, ton, tim);
-  delay(tim + 20);
-}
-#endif
-
-#ifdef version_1_0
-void beep(unsigned char num, unsigned int tim)
-{
-  for (unsigned char num_i = 0; num_i < num; num_i++)
-  {
-    digitalWrite(BUZZER, HIGH);
-    delay(tim);
-    digitalWrite(BUZZER, LOW);
-    delay(50);
-  }
-}
-#endif
-
-void beep_not() //мелодия предупреждения
-{
-#ifdef version_1_1
-  //мелодия
-  beep(note_g, 50);
-  beep(note_e, 50);
-  beep(note_c, 50);
-  noTone(BUZZER);
-#endif
-#ifdef version_1_0
-  beep(3, 100);
-#endif
-}
-
+*/

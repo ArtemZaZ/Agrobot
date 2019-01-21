@@ -23,8 +23,8 @@
 #define MOTOR_ENABLE_B_CH     9   // пин разрешающий работу мотора B
 #define MOTOR_PWM_A_CH        A2  // канал ШИМа мотора А
 #define MOTOR_PWM_B_CH        13  // канал ШИМа мотора B
-#define MOTOR_PWM_INVERSE_A   4   // пин инвертирующий ШИМ на канале мотора А
-#define MOTOR_PWM_INVERSE_B   A3  // пин инвертирующий ШИМ на канале мотора B
+#define MOTOR_PWM_INVERSE_A_CH   4   // пин инвертирующий ШИМ на канале мотора А
+#define MOTOR_PWM_INVERSE_B_CH   A3  // пин инвертирующий ШИМ на канале мотора B
 
 // выводы джойстика
 #define JOY_DAT_CH  5
@@ -59,4 +59,5 @@
 #define MAX_MCU_CURRENT 5 //максимальный ток, при превышении которого срабатывает защита (5А)
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
+
 

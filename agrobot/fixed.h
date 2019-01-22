@@ -23,9 +23,9 @@
 #define MOTOR_ENABLE_A_CH     10  // пин разрешающий работу мотора A
 #define MOTOR_ENABLE_B_CH     9   // пин разрешающий работу мотора B
 #define MOTOR_PWM_A_CH        A2  // канал ШИМа мотора А
-#define MOTOR_PWM_B_CH        13  // канал ШИМа мотора B
-#define MOTOR_PWM_INVERSE_A_CH   4   // пин инвертирующий ШИМ на канале мотора А
-#define MOTOR_PWM_INVERSE_B_CH   A3  // пин инвертирующий ШИМ на канале мотора B
+#define MOTOR_PWM_B_CH        A3  // канал ШИМа мотора B
+#define MOTOR_PWM_INVERSE_A_CH   13   // пин инвертирующий ШИМ на канале мотора А
+#define MOTOR_PWM_INVERSE_B_CH   4  // пин инвертирующий ШИМ на канале мотора B
 
 // выводы джойстика
 #define JOY_DAT_CH  5

@@ -9,6 +9,7 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <PS2X_lib.h>
 
+// TODO: везде запилить проверку границ
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 Adafruit_SSD1306 display(DISPLAY_RESET_CH); // инициализация дисплея
@@ -28,7 +29,6 @@ uint32_t servoBucketGrabMax = SERVO_CENTRAL_POSITION;  // максимально
 
 uint32_t bucketPulseLen = SERVO_CENTRAL_POSITION;  // ???
 uint32_t bucketGrabPulseLen = SERVO_CENTRAL_POSITION;
-uint32_t plowPulseLen = SERVO_CENTRAL_POSITION;
 uint32_t plantPulseLen = SERVO_CENTRAL_POSITION;
 
 uint64_t standIdleTimer; // таймер отсчета времени бездействия
@@ -103,6 +103,14 @@ void printText(uint8_t* str, uint8_t textsize)  //Вывод строки на �
   display.setCursor(0, 16);
   display.println((char*)str);
   display.display();
+}
+
+
+uint32_t rerangeSpeed(uint32_t mspeed)  // проверка и корректировка скорости
+{
+  if (mspeed > SPEED_MAX) return SPEED_MAX;
+  if (mspeed < SPEED_MIN) return SPEED_MIN;
+  return mspeed;
 }
 
 
@@ -186,6 +194,42 @@ void beepAlarm() // мелодия предупреждения
 }
 
 
+void plowUp()   // поднять плуг
+{
+  for (uint32_t plowPulseLen = servoPlowMin; plowPulseLen < servoPlowMax; plowPulseLen++)
+  {
+    pwm.setPWM(SERVO_PLOW_CH, 0, plowPulseLen);
+    delay(SERVO_DELAY);
+  }
+}
+
+
+void plowDown() // опустить плуг
+{
+  for (uint32_t plowPulseLen = servoPlowMax; plowPulseLen > servoPlowMin; plowPulseLen--)
+  {
+    pwm.setPWM(SERVO_PLOW_CH, 0, plowPulseLen);
+    delay(SERVO_DELAY);
+  }
+}
+
+
+void plantActivate()  // активировать диспенсер
+{
+  static uint32_t plantPulseLen = SERVO_CENTRAL_POSITION;
+  for (plantPulseLen = servoPlantMin; plantPulseLen < servoPlantMax; plantPulseLen++)
+  {
+    pwm.setPWM(SERVO_PLANT_CH, 0, plantPulseLen);
+    delay(SERVO_DELAY);
+  }
+  delay(PLANT_ACTIVE_DELAY);   
+  for (plantPulseLen = servoPlantMax; plantPulseLen > servoPlantMin; plantPulseLen--)
+  {
+    pwm.setPWM(SERVO_PLANT_CH, 0, plantPulseLen);
+    delay(SERVO_DELAY);
+  }  
+}
+
 void adcDataCounter(float* voltage, float* current)   // вычисление значения напряжения питания и тока, запись в параметры
 {
   static uint8_t adcCount = ADC_MAX_COUNT;  // ограничение по частоте считывания данных с АЦП
@@ -261,14 +305,14 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
     case SERVO_MOVE_UP:
       servoCalibPos++;
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      delay(SERVO_CALIBRATION_DELAY);
+      delay(SERVO_DELAY);
       state = LEAD;
       return false;
 
     case SERVO_MOVE_DOWN:
       servoCalibPos--;
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      delay(SERVO_CALIBRATION_DELAY);
+      delay(SERVO_DELAY);
       state = LEAD;
       return false;
 
@@ -319,6 +363,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 
 bool workFSM()    // рабочий режим
 {
+  static bool isPlowDown = false;  // опущен ли плуг
   static enum
   {
     LEAD,  // управляющий режим
@@ -392,47 +437,65 @@ bool workFSM()    // рабочий режим
       return false;
 
     case SPEED_UP:
-
+      motorSpeed = rerangeSpeed(motorSpeed + SPEED_STEP);
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
     case SPEED_DOWN:
-
+      motorSpeed = rerangeSpeed(motorSpeed - SPEED_STEP);
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
     case PLOW_SWITCH:
-
+      if (isPlowDown) 
+      {
+        plowUp();   // поднимаем плуг
+        isPlowDown = false;
+      }
+      else
+      {
+        plowDown();    // опускаем плуг
+        isPlowDown = true;
+      }
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
      case PLANT_ACTIVATION:
 
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
     case BUCKET_UP:
 
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
     case BUCKET_DOWN:
-      
+
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
     case BUCKET_GRAB_CLAMP:
-    
+
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
     case BUCKET_GRAB_LOOSE:
-      
+
+      standIdleTimer = millis();
       state = LEAD;
       return false;
 
     case EXIT:
 
+      standIdleTimer = millis();
       state = LEAD;
       return true;
   }

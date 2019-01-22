@@ -10,17 +10,6 @@
 #include <PS2X_lib.h>
 
 
-/*
-#define DSERVO_const 5 //шаг изменения положения сервы
-
-
-#define NUMFLAKES 10
-#define XPOS 0
-#define YPOS 1
-#define DELTAY 2
-*/
-
-
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 Adafruit_SSD1306 display(DISPLAY_RESET_CH); // инициализация дисплея
 PS2X ps2x;  // cоздание экземпляра класса для джойстика
@@ -44,22 +33,7 @@ uint32_t plantPulseLen = SERVO_CENTRAL_POSITION;
 
 uint64_t standIdleTimer; // таймер отсчета времени бездействия
 
-//float mcuVoltage;  // текущее напряжение
-//float mcuVurrent;  // текущий ток
-
-/*
-unsigned long time_pause;
-unsigned long time_standstill_long;
-
-unsigned char flag = 0;
-unsigned char state_plow = 0, outstr, servo_ch = 0, address_max, address_min;
-unsigned int calibration = SERVO_CENTRAL;
-         
-int error = 0;
-byte type = 0;
-byte vibrate = 0;
-*/
-
+/// Ф-ии пока особо несмотрел, буду пересматривать после перестройки логики
 
 void motorSetup()   // инициализация моторов
 {

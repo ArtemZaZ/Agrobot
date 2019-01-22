@@ -230,6 +230,7 @@ void plantActivate()  // активировать диспенсер
   }  
 }
 
+
 void adcDataCounter(float* voltage, float* current)   // вычисление значения напряжения питания и тока, запись в параметры
 {
   static uint8_t adcCount = ADC_MAX_COUNT;  // ограничение по частоте считывания данных с АЦП
@@ -464,7 +465,7 @@ bool workFSM()    // рабочий режим
       return false;
 
      case PLANT_ACTIVATION:
-
+      plantActivate();
       standIdleTimer = millis();
       state = LEAD;
       return false;

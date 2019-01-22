@@ -16,7 +16,8 @@
 
 
 #define SERVO_CENTRAL_POSITION  350  // центральное положение серв (1500 мкс)
-#define SERFO_FREQ  60  // частота ШИМ (~57Гц)
+#define SERVO_FREQ  60  // частота ШИМ (~57Гц)
+#define SERVO_CALIBRATION_DELAY 3 // задержка сервы при калибровке     
 
 // выводы драйвера моторов
 #define MOTOR_ENABLE_A_CH     10  // пин разрешающий работу мотора A
@@ -60,4 +61,11 @@
 #define MIN_MCU_VOLTAGE 3.3
 #define ADC_CURR_CONST 0.47
 
+// Итерируемы объекты - каналы серв и их имена для режима калибровки - нуль-терминальные строки
+const unsigned char SERVO_ITERATED[5] = {SERVO_PLANT_CH, SERVO_PLOW_CH, SERVO_BUCKET_GRAB_CH, SERVO_BUCKET_CH, '\0'};
+const char * SERVO_NAMES_ITERATED[5] = {"Plant", "Plow", "Bucket grab", "Bucket", '\0'};
+const unsigned int EEPROM_ADDR_SERV_MIN[5] = {EEPROM_ADDR_SERV_PLANT_MIN, EEPROM_ADDR_SERV_PLOW_MIN,    // адреса максимальных позиций серв в епроме
+                                              EEPROM_ADDR_SERV_BUCKET_GRAB_MIN, EEPROM_ADDR_SERV_BUCKET_MIN, '\0'};
+const unsigned int EEPROM_ADDR_SERV_MAX[5] = {EEPROM_ADDR_SERV_PLANT_MIN, EEPROM_ADDR_SERV_PLOW_MIN,    // адреса максимальных позиций серв в епроме
+                                              EEPROM_ADDR_SERV_BUCKET_GRAB_MAX, EEPROM_ADDR_SERV_BUCKET_MAX, '\0'};
 

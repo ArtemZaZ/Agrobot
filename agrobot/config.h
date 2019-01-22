@@ -27,9 +27,6 @@
 #define SERVO_PLOW_CH     5 // канал сервы плуга
 #define SERVO_PLANT_CH    4 // канал сервы диспенсора
 
-// Итерируемы объекты - каналы серв и их имена для режима калибровки
-const unsigned char SERVO_ITERATED[5] = {SERVO_PLANT_CH, SERVO_PLOW_CH, SERVO_BUCKET_GRAB_CH, SERVO_BUCKET_CH, '\0'};
-const unsigned char * SERVO_NAMES_ITERATED[5] = {"Plant", "Plow", "Bucket grab", "Bucket", '\0'};
 
 /* проверка параметров - при настройке не трогаем */
 #ifndef VERSION // если не продефайнина версия

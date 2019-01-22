@@ -1,7 +1,7 @@
 #include "config.h"
 #include "pictures.h"
 #include "stdint.h"
-/*#include <SPI.h>
+#include <SPI.h>
 #include <Wire.h>
 #include <EEPROM.h>
 #include <Adafruit_GFX.h>
@@ -9,11 +9,10 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <PS2X_lib.h>
 
-#define SERVO_MAX_CH  7 //самый большой по счёту занятый канал
-#define SERVO_MIN_CH  4 //самый меньший по счёту занятый канал
 
+/*
 #define DSERVO_const 5 //шаг изменения положения сервы
-#define SERVO_DELAY 3 //задержка для правильной работы
+
 
 #define NUMFLAKES 10
 #define XPOS 0
@@ -23,11 +22,12 @@
 
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
-Adafruit_SSD1306 display(OLED_RESET); // инициализация дисплея
+Adafruit_SSD1306 display(DISPLAY_RESET_CH); // инициализация дисплея
 PS2X ps2x;  // cоздание экземпляра класса для джойстика
 
 
 uint8_t motorSpeed = SPEED_MIN;   // скорость мотора, текущая
+// пока глобальные мб потом сделаю локальные
 uint32_t servoPlantMin = SERVO_CENTRAL_POSITION;   // минимальное положение диспенсора
 uint32_t servoPlantMax = SERVO_CENTRAL_POSITION;   // максимальное
 uint32_t servoPlowMin = SERVO_CENTRAL_POSITION;    // минимальное полпжение плуга
@@ -92,16 +92,32 @@ void servoSetup() // инициализация серв
 {
   pwm.begin();
   pwm.setPWMFreq(SERVO_FREQ);  // Установка частоты ШИМ
-  servoCentering();
 }
 
 
 void servoCentering() // центрирование серв
 {
-  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL);
-  pwm.setPWM(SERVO_BUCKETUD_CH, 0, SERVO_CENTRAL);
+  pwm.setPWM(SERVO_PLANT_CH, 0, SERVO_CENTRAL_POSITION);
+  pwm.setPWM(SERVO_PLOW_CH, 0, SERVO_CENTRAL_POSITION);
+  pwm.setPWM(SERVO_BUCKET_CH, 0, SERVO_CENTRAL_POSITION);
+  pwm.setPWM(SERVO_BUCKET_GRAB_CH, 0, SERVO_CENTRAL_POSITION);
+}
+
+
+void readServoRange() // читает значения крайних положений серв из епрома и записывает их в глобальные переменные
+{
+  //Значения границ серв считываются из энергонезависимой памяти
+  EEPROM.get(EEPROM_ADDR_SERV_PLANT_MAX, servoPlantMax);
+  EEPROM.get(EEPROM_ADDR_SERV_PLANT_MIN, servoPlantMin);
+
+  EEPROM.get(EEPROM_ADDR_SERV_PLOW_MAX, servoPlowMax);
+  EEPROM.get(EEPROM_ADDR_SERV_PLOW_MIN, servoPlowMin);
+
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_MAX, servoBucketMax);
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_MIN, servoBucketMin);
+
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_GRAB_MAX, servoBucketGrabMax);
+  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_GRAB_MIN, servoBucketGrabMin);
 }
 
 
@@ -111,7 +127,7 @@ void printText(uint8_t* str, uint8_t textsize)  //Вывод строки на �
   display.setTextSize(textsize);
   display.setTextColor(WHITE);
   display.setCursor(0, 16);
-  display.println(str);
+  display.println((char*)str);
   display.display();
 }
 
@@ -133,7 +149,7 @@ void setSpeedRight(int mspeed)  // первый двигатель - А
 }
 
 
-void SetSpeedLeft(int mspeed) // второй двигатель - B
+void setSpeedLeft(int mspeed) // второй двигатель - B
 {
   if (mspeed > 0)
   {
@@ -149,7 +165,7 @@ void SetSpeedLeft(int mspeed) // второй двигатель - B
 }
 
 
-void StopMotors()   // остановка двигателей
+void stopMotors()   // остановка двигателей
 {
   analogWrite(MOTOR_PWM_A_CH, 0);
   digitalWrite(MOTOR_PWM_INVERSE_A_CH, LOW);
@@ -158,7 +174,7 @@ void StopMotors()   // остановка двигателей
 }
 
 
-#ifdef VERSION == 11
+#if VERSION == 11
 void beep(uint32_t ton, uint32_t tim) // для проигрывания тона
 {
   tone(BUZZER, ton, tim);
@@ -167,14 +183,14 @@ void beep(uint32_t ton, uint32_t tim) // для проигрывания тон�
 #endif
 
 
-#ifdef VERSION == 10
+#if VERSION == 10
 void beep(uint8_t num, uint32_t tim)
 {
   for (uint32_t i = 0; i < num; i++)
   {
-    digitalWrite(BUZZER, HIGH);
+    digitalWrite(BUZZER_CH, HIGH);
     delay(tim);
-    digitalWrite(BUZZER, LOW);
+    digitalWrite(BUZZER_CH, LOW);
     delay(50);
   }
 }
@@ -183,14 +199,14 @@ void beep(uint8_t num, uint32_t tim)
 
 void beepAlarm() // мелодия предупреждения
 {
-#ifdef VERSION == 11
+#if VERSION == 11
   //мелодия
   beep(note_g, 50);
   beep(note_e, 50);
   beep(note_c, 50);
   noTone(BUZZER);
 #endif
-#ifdef VERSION == 10
+#if VERSION == 10
   beep(3, 100);
 #endif
 }
@@ -202,8 +218,8 @@ void adcDataCounter(float* voltage, float* current)   // вычисление з
   if (adcCount >= ADC_MAX_COUNT)
   {
     adcCount = 0;
-    *mcu_voltage = ADC_VOLT_DIV_CONST * analogRead(ADC_VOLTAGE_CH) * ADC_UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
-    *mcu_current = analogRead(ADC_CURRENT_CH) * ADC_UAREF / ADC_MAX / ADC_CURR_CONST;
+    *voltage = ADC_VOLT_DIV_CONST * analogRead(ADC_VOLTAGE_CH) * ADC_UAREF / ADC_MAX; //вычисление напряжения на выходе буффера
+    *current = analogRead(ADC_CURRENT_CH) * ADC_UAREF / ADC_MAX / ADC_CURR_CONST;
   }
   adcCount++;
 }
@@ -212,12 +228,14 @@ void adcDataCounter(float* voltage, float* current)   // вычисление з
 bool calibrationFSM()   // режим калибровки, нетривиальный конечный автомат, где состояния управляются от одного лидера, состояния переключаются по нажатию кнопок джойстика 
 {
   static int8_t servoCounter = 0;  // каретка, переключающаяся от сервы к серве (нужен знаковый)
+  static uint32_t servoCalibPos = SERVO_CENTRAL_POSITION;
   static enum   
   {
     LEAD,   // главный режим, отсюда идет переход ко всем остальным состояниям
     EEPROM_CLEAR,  // тут происходит очистка EEPROM
-    NEXT_SERVO, // переход к следующей серве
-    PREV_SERVO, // переход к предыдущей серве
+    SERVO_NEXT, // переход к следующей серве
+    SERVO_PREV, // переход к предыдущей серве
+    SERVO_CENTERING,  // центровка выбранной сервы
     SERVO_MOVE_UP,  // увеличение скважности ШИМа на серве
     SERVO_MOVE_DOWN,  // уменьшение скважности ШИМа на серве
     SERVO_FIND_MAX,   // находим максимальную скважность сервы, в одном из крайних положений
@@ -228,60 +246,96 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
   switch(state)
   {
     case LEAD:
-      if (ps2x.Button(PSB_L3) && ps2x.Button(PSB_R3) && ps2x.Button(PSB_R1) && ps2x.Button(PSB_L1))   // очистка епрома
-      {
-        state = EEPROM_CLEAR;
-      }
-
-      if (ps2x.ButtonPressed(PSB_R1))
-      {
-        state = NEXT_SERVO;
-      }
-
-      if (ps2x.ButtonPressed(PSB_L1))
-      {
-        state = PREV_SERVO;
-      }
-      return;
+      if (ps2x.Button(PSB_L3) && ps2x.Button(PSB_R3) && ps2x.Button(PSB_R1) && ps2x.Button(PSB_L1)){ state = EEPROM_CLEAR; }  // очистка епрома 
+      if (ps2x.ButtonPressed(PSB_R1)) { state = SERVO_NEXT; }
+      if (ps2x.ButtonPressed(PSB_L1)) { state = SERVO_PREV; }
+      if (ps2x.Button(PSB_L3) | ps2x.Button(PSB_R3)) { state = SERVO_CENTERING; }
+      if (ps2x.Button(PSB_PAD_UP)) { state = SERVO_MOVE_UP; }
+      if (ps2x.Button(PSB_PAD_DOWN)) { state = SERVO_MOVE_DOWN; }
+      if (ps2x.ButtonPressed(PSB_TRIANGLE)) { state = SERVO_FIND_MAX; }
+      if (ps2x.ButtonPressed(PSB_CROSS)) { state = SERVO_FIND_MIN; }
+      if (ps2x.Button(PSB_L2) & ps2x.Button(PSB_R2)) { state = EXIT; }
+      return false;
 
     case EEPROM_CLEAR:
       // тут будет очистка епрома
       state = LEAD;
-      return;
+      return false;
 
-    case NEXT_SERVO:  // делаем кольцевой массив
+    case SERVO_NEXT:  // делаем кольцевой массив
       servoCounter++;  
-      if (servoCounter >= (strlen(SERVO_ITERATED) - 1)) servoCounter = 0;
+      if (servoCounter >= (strlen((const char*)SERVO_ITERATED) - 1)) servoCounter = 0;
+      servoCalibPos = SERVO_CENTRAL_POSITION;   // центровка сервы при переключении
+      pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
       state = LEAD;      
-      return;
+      return false;
 
-    case PREV_SERVO:
+    case SERVO_PREV:
       servoCounter--;
-      if (servoCounter <= 0) servoCounter = strlen(SERVO_ITERATED) - 1; 
+      if (servoCounter <= 0) servoCounter = strlen((const char*)SERVO_ITERATED) - 1; 
+      servoCalibPos = SERVO_CENTRAL_POSITION;   // центровка сервы при переключении
+      pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
       state = LEAD;
-      return;
+      return false;
+
+    case SERVO_CENTERING:
+      servoCalibPos = SERVO_CENTRAL_POSITION; // установка центрального значения для текущей сервы
+      pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
+      state = LEAD;
+      return false;
 
     case SERVO_MOVE_UP:
-
+      servoCalibPos++;
+      pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
+      delay(SERVO_CALIBRATION_DELAY);
       state = LEAD;
-      return;
+      return false;
 
     case SERVO_MOVE_DOWN:
-
+      servoCalibPos--;
+      pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
+      delay(SERVO_CALIBRATION_DELAY);
       state = LEAD;
-      return;
+      return false;
 
     case SERVO_FIND_MAX:
-
+      EEPROM.put(EEPROM_ADDR_SERV_MAX[servoCounter], servoCalibPos);
+#if VERSION == 11
+      beep(note_c, 200);
+      noTone(BUZZER);
+#endif
+#if VERSION == 10
+      beep(1, 200);
+#endif
       state = LEAD;
-      return;
+      return false;
 
     case SERVO_FIND_MIN:
-
+      EEPROM.put(EEPROM_ADDR_SERV_MIN[servoCounter], servoCalibPos);
+#if VERSION == 11
+      beep(note_c, 200);
+      noTone(BUZZER);
+#endif
+#if VERSION == 10
+      beep(1, 200);
+#endif
       state = LEAD;      
-      return;
+      return false;
 
     case EXIT:
+      readServoRange(); // чтение границ серв из епрома и запись в глобальные переменные
+#if VERSION == 11
+      beep(note_c, 300);
+      beep(note_g, 300);
+      beep(note_b, 300);
+      noTone(BUZZER);
+#endif
+
+#if VERSION == 10
+      beep(1, 500);
+#endif
+      servoCentering();   // центровка серв
+      standIdleTimer = millis();  // запомнить время последнего действия
       return true;
   }
 }
@@ -298,7 +352,7 @@ bool workFSM()    // рабочий режим
     RIGHT,  // вправо
     SPEED_UP, // уменьшение скорости
     SPEED_DOWN,  // увеличение скорости
-    PLOW_SWITCH   // переключает состояние плуга
+    PLOW_SWITCH,   // переключает состояние плуга
     PLANT_ACTIVATION, // активация диспенсора 
     BUCKET_UP,  // поднять ковш
     BUCKET_DOWN,  // опустить ковш
@@ -311,55 +365,55 @@ bool workFSM()    // рабочий режим
   {
     case LEAD:
       
-      return;
+      return false;
 
     case FORWARD:
 
-      return;
+      return false;
 
     case BACKWARD:
 
-      return;
+      return false;
 
     case LEFT:
 
-      return;
+      return false;
 
     case RIGHT:
 
-      return;
+      return false;
 
     case SPEED_UP:
 
-      return;
+      return false;
 
     case SPEED_DOWN:
 
-      return;
+      return false;
 
     case PLOW_SWITCH:
       
-      return;
+      return false;
 
      case PLANT_ACTIVATION:
 
-      return;
+      return false;
 
     case BUCKET_UP:
 
-      return;
+      return false;
 
     case BUCKET_DOWN:
 
-      return;
+      return false;
 
     case BUCKET_GRAB_CLAMP:
 
-      return;
+      return false;
 
     case BUCKET_GRAB_LOOSE:
 
-      return;
+      return false;
 
     case EXIT:
       return true;
@@ -367,26 +421,17 @@ bool workFSM()    // рабочий режим
 }
 
 
-void setup() {
-  
+
+
+void setup() 
+{
   pinMode(A4, INPUT_PULLUP);    // подтяжка линий I2C к питанию, мб и не надо 
   pinMode(A5, INPUT_PULLUP);
 
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
-  error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble); // что выдает error ????
+  ps2x.config_gamepad(JOY_CLK_CH, JOY_CMD_CH, JOY_SEL_CH, JOY_DAT_CH, JOY_PRESSURES, JOY_RUMBLE); // что выдает error ????
 
-  //Значения границ серв считываются из энергонезависимой памяти
-  EEPROM.get(EEPROM_ADDR_SERV_PLANT_MAX, servoPlantMax);
-  EEPROM.get(EEPROM_ADDR_SERV_PLANT_MIN, servoPlantMin);
-
-  EEPROM.get(EEPROM_ADDR_SERV_PLOW_MAX, servoPlowMax);
-  EEPROM.get(EEPROM_ADDR_SERV_PLOW_MIN, servoPlowMin);
-
-  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_MAX, servoBucketMax);
-  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_MIN, servoBucketMin);
-
-  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_GRAB_MAX, servoBucketGrabMax);
-  EEPROM.get(EEPROM_ADDR_SERV_BUCKET_GRAB_MIN, servoBucketGrabMin);
+  readServoRange();   // чтение границ серв из епрома и запись в глобальные переменные
 
 #if VERSION == 11
   //мелодия включения
@@ -403,35 +448,40 @@ void setup() {
 
   analogReference(EXTERNAL);  // настройка опорного напряжения для АЦП: внешний источник на выводе AREF
 
-  servoSetup();
+  servoSetup();   // инициализация серв
+  servoCentering();   // центрирование серв
 
   standIdleTimer = millis(); // запомнить время последнего действия
 }
+
+
+
 
 void loop()
 {
   static bool m_exit = false; // доп переменная для хранения данных о выходе из некоторых конечных автоматов
   static enum 
   {
-    WORK,
-    CALIBRATION  
+    WORK,   // рабочий режим - ездит, кривляется
+    CALIBRATION  // режим калибровки
   } state;
   
   switch(state)
   {
     case WORK:
-      m_exit = workFSM();
-      if(m_exit)  state = CALIBRATION
+      m_exit = workFSM();   // крутимся в рабочем режиме, пока не придет флаг о выходе из него - вернется true
+      if(m_exit)  state = CALIBRATION;
       m_exit = false;
       return;
 
     case CALIBRATION:
-      m_exit = calibrationFSM();
+      m_exit = calibrationFSM();  // крутимся в режиме калибровки, пока не придет флаг о выходе из него - вернется true
       if(m_exit)  state = WORK;
       m_exit = false;
       return;    
   }
 }
+
 
 /*
 void loop()

@@ -22,8 +22,8 @@
 #define JOY_RUMBLE    false  // вибромотор
 
 // подключение серв (выводы/каналы pca)
-#define SERVO_BUCKET_CH   7 // канал сервы ковша
-#define SERVO_BUCKET_GRAB_CH 6  // канал сервы схвата ковша
+#define SERVO_BUCKET_CH   6 // канал сервы ковша
+#define SERVO_BUCKET_GRAB_CH 7  // канал сервы схвата ковша   //+
 #define SERVO_PLOW_CH     5 // канал сервы плуга
 #define SERVO_PLANT_CH    4 // канал сервы диспенсора
 

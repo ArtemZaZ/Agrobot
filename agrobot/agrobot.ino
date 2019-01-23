@@ -106,6 +106,19 @@ void printText(uint8_t* str, uint8_t textsize)  //Вывод строки на �
 }
 
 
+void calibrateDisplay(char* servoName, uint32_t servoPosition)
+{
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println(servoName);
+  display.setCursor(0, 16);
+  display.println(servoPosition);
+  display.display();  
+}
+
+
 uint32_t rerangeSpeed(uint32_t mspeed)  // проверка и корректировка скорости
 {
   if (mspeed > SPEED_MAX) return SPEED_MAX;
@@ -191,6 +204,16 @@ void beepAlarm() // мелодия предупреждения
 #if VERSION == 10
   beep(3, 100);
 #endif
+}
+
+
+void debug()    // пищалка отладки
+{
+#if VERSION == 11
+  beep(NOTE_G, 50);
+  noTone(BUZZER_CH);
+  delay(50);
+#endif  
 }
 
 
@@ -283,23 +306,26 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 
     case SERVO_NEXT:  // делаем кольцевой массив
       servoCounter++;  
-      if (servoCounter >= (strlen((const char*)SERVO_ITERATED) - 1)) servoCounter = 0;
+      if (servoCounter >= (strlen((const char*)SERVO_ITERATED))) servoCounter = 0;
       servoCalibPos = SERVO_CENTRAL_POSITION;   // центровка сервы при переключении
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
+      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
       state = LEAD;      
       return false;
 
     case SERVO_PREV:
       servoCounter--;
-      if (servoCounter <= 0) servoCounter = strlen((const char*)SERVO_ITERATED) - 1; 
+      if (servoCounter < 0) servoCounter = strlen((const char*)SERVO_ITERATED) - 1; 
       servoCalibPos = SERVO_CENTRAL_POSITION;   // центровка сервы при переключении
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
+      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
       state = LEAD;
       return false;
 
     case SERVO_CENTERING:
       servoCalibPos = SERVO_CENTRAL_POSITION; // установка центрального значения для текущей сервы
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
+      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
       state = LEAD;
       return false;
 
@@ -307,6 +333,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       servoCalibPos++;
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
       delay(SERVO_DELAY);
+      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
       state = LEAD;
       return false;
 
@@ -314,6 +341,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       servoCalibPos--;
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
       delay(SERVO_DELAY);
+      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
       state = LEAD;
       return false;
 
@@ -344,19 +372,29 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
     case EXIT:
       readServoRange(); // чтение границ серв из епрома и запись в глобальные переменные
 #if VERSION == 11
-      beep(NOTE_C, 300);
-      beep(NOTE_G, 300);
-      beep(NOTE_B, 300);
+      beep(NOTE_C, 50);
+      //beep(NOTE_G, 300);
+      //beep(NOTE_B, 300);
       noTone(BUZZER_CH);
 #endif
-
 #if VERSION == 10
       beep(1, 500);
 #endif
       servoCentering();   // центровка серв
-      servoCounter = 0;
+      //servoCounter = 0;
       servoCalibPos = SERVO_CENTRAL_POSITION;
+      //display.clearDisplay();   // чистим дисплей
+      //display.display();  
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setTextColor(WHITE);
+      display.setCursor(0, 0);
+      display.println(servoPlowMin);
+      display.setCursor(0, 16);
+      display.println(servoPlowMax);
+      display.display();
       standIdleTimer = millis();  // запомнить время последнего действия
+      state = LEAD;  
       return true;
   }
 }
@@ -534,7 +572,9 @@ void setup()
 #endif
 
   analogReference(EXTERNAL);  // настройка опорного напряжения для АЦП: внешний источник на выводе AREF
-
+  
+  Serial.begin(9600);
+  
   standIdleTimer = millis(); // запомнить время последнего действия
 }
 
@@ -550,14 +590,13 @@ void loop()
     CALIBRATION  // режим калибровки
   } state;
 
-
   ps2x.read_gamepad(false, 0); // считывание данных с джойстика и установка скорости вибрации !!! (пока так)
   switch(state)
   {
     case WORK:
-      m_exit = workFSM();   // крутимся в рабочем режиме, пока не придет флаг о выходе из него - вернется true
+      //m_exit = workFSM();   // крутимся в рабочем режиме, пока не придет флаг о выходе из него - вернется true
       if(m_exit)  state = CALIBRATION;
-      m_exit = false;
+      m_exit = true;
       break;
 
     case CALIBRATION:
@@ -566,5 +605,6 @@ void loop()
       m_exit = false;
       break;    
   }
+  delay(5);
 }
 

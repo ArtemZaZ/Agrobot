@@ -1,18 +1,19 @@
 #pragma once 
+#include "stdint.h"
 /* Файл фиксированных параметров */
 
 // для работы с EEPROM (адреса положений серв, записываемых в EEPROM)
 #define EEPROM_ADDR_SERV_PLANT_MIN    0   // идем с нуля, дальше прибавляем адреса
-#define EEPROM_ADDR_SERV_PLANT_MAX    EEPROM_ADDR_SERV_PLANT_MIN + sizeof(int)
+#define EEPROM_ADDR_SERV_PLANT_MAX    EEPROM_ADDR_SERV_PLANT_MIN + sizeof(uint32_t)
 
-#define EEPROM_ADDR_SERV_PLOW_MIN     EEPROM_ADDR_SERV_PLANT_MAX + sizeof(int)
-#define EEPROM_ADDR_SERV_PLOW_MAX     EEPROM_ADDR_SERV_PLOW_MIN + sizeof(int)
+#define EEPROM_ADDR_SERV_PLOW_MIN     EEPROM_ADDR_SERV_PLANT_MAX + sizeof(uint32_t)
+#define EEPROM_ADDR_SERV_PLOW_MAX     EEPROM_ADDR_SERV_PLOW_MIN + sizeof(uint32_t)
 
-#define EEPROM_ADDR_SERV_BUCKET_GRAB_MIN  EEPROM_ADDR_SERV_PLOW_MAX + sizeof(int)
-#define EEPROM_ADDR_SERV_BUCKET_GRAB_MAX  EEPROM_ADDR_SERV_BUCKET_GRAB_MIN + sizeof(int)
+#define EEPROM_ADDR_SERV_BUCKET_GRAB_MIN  EEPROM_ADDR_SERV_PLOW_MAX + sizeof(uint32_t)
+#define EEPROM_ADDR_SERV_BUCKET_GRAB_MAX  EEPROM_ADDR_SERV_BUCKET_GRAB_MIN + sizeof(uint32_t)
 
-#define EEPROM_ADDR_SERV_BUCKET_MIN   EEPROM_ADDR_SERV_BUCKET_GRAB_MAX + sizeof(int)
-#define EEPROM_ADDR_SERV_BUCKET_MAX   EEPROM_ADDR_SERV_BUCKET_MIN + sizeof(int)
+#define EEPROM_ADDR_SERV_BUCKET_MIN   EEPROM_ADDR_SERV_BUCKET_GRAB_MAX + sizeof(uint32_t)
+#define EEPROM_ADDR_SERV_BUCKET_MAX   EEPROM_ADDR_SERV_BUCKET_MIN + sizeof(uint32_t)
 
 
 #define SERVO_CENTRAL_POSITION  350  // центральное положение серв (1500 мкс)
@@ -63,9 +64,9 @@
 
 // Итерируемы объекты - каналы серв и их имена для режима калибровки - нуль-терминальные строки
 const unsigned char SERVO_ITERATED[5] = {SERVO_PLANT_CH, SERVO_PLOW_CH, SERVO_BUCKET_GRAB_CH, SERVO_BUCKET_CH, '\0'};
-const char * SERVO_NAMES_ITERATED[5] = {"Plant", "Plow", "Bucket grab", "Bucket", '\0'};
+const char * SERVO_NAMES_ITERATED[5] = {"Plant", "Plow", "BucketGrab", "Bucket", '\0'};
 const unsigned int EEPROM_ADDR_SERV_MIN[5] = {EEPROM_ADDR_SERV_PLANT_MIN, EEPROM_ADDR_SERV_PLOW_MIN,    // адреса максимальных позиций серв в епроме
                                               EEPROM_ADDR_SERV_BUCKET_GRAB_MIN, EEPROM_ADDR_SERV_BUCKET_MIN, '\0'};
-const unsigned int EEPROM_ADDR_SERV_MAX[5] = {EEPROM_ADDR_SERV_PLANT_MIN, EEPROM_ADDR_SERV_PLOW_MIN,    // адреса максимальных позиций серв в епроме
+const unsigned int EEPROM_ADDR_SERV_MAX[5] = {EEPROM_ADDR_SERV_PLANT_MAX, EEPROM_ADDR_SERV_PLOW_MAX,    // адреса максимальных позиций серв в епроме
                                               EEPROM_ADDR_SERV_BUCKET_GRAB_MAX, EEPROM_ADDR_SERV_BUCKET_MAX, '\0'};
 

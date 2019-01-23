@@ -106,7 +106,7 @@ void printText(uint8_t* str, uint8_t textsize)  //Вывод строки на �
 }
 
 
-void calibrateDisplay(char* servoName, uint32_t servoPosition)
+void servoCalibrateDisplay(char* servoName, uint32_t servoPosition)
 {
   display.clearDisplay();
   display.setTextSize(2);
@@ -116,6 +116,25 @@ void calibrateDisplay(char* servoName, uint32_t servoPosition)
   display.setCursor(0, 16);
   display.println(servoPosition);
   display.display();  
+}
+
+
+void servoInfoDisplay(char* servoName, uint32_t servoPositionMin, uint32_t servoPositionMax)
+{
+  display.clearDisplay();
+  display.setTextSize(1.5);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println(servoName);
+  display.setCursor(0, 10);
+  display.println("MIN: ");
+  display.setCursor(30, 8);
+  display.println(servoPositionMin);
+  display.setCursor(0, 20);
+  display.println("MAX: ");
+  display.setCursor(30, 20);
+  display.println(servoPositionMax);
+  display.display();    
 }
 
 
@@ -271,6 +290,8 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 {
   static int8_t servoCounter = 0;  // каретка, переключающаяся от сервы к серве (нужен знаковый)
   static uint32_t servoCalibPos = SERVO_CENTRAL_POSITION;
+  static uint32_t tempInfoPositionMin = SERVO_CENTRAL_POSITION;
+  static uint32_t tempInfoPositionMax = SERVO_CENTRAL_POSITION;
   static enum   
   {
     LEAD,   // главный режим, отсюда идет переход ко всем остальным состояниям
@@ -309,7 +330,10 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       if (servoCounter >= (strlen((const char*)SERVO_ITERATED))) servoCounter = 0;
       servoCalibPos = SERVO_CENTRAL_POSITION;   // центровка сервы при переключении
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
+      
+      EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);
+      EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
+      servoInfoDisplay(SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
       state = LEAD;      
       return false;
 
@@ -318,30 +342,36 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       if (servoCounter < 0) servoCounter = strlen((const char*)SERVO_ITERATED) - 1; 
       servoCalibPos = SERVO_CENTRAL_POSITION;   // центровка сервы при переключении
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
+
+      EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);
+      EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
+      servoInfoDisplay(SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
       state = LEAD;
       return false;
 
     case SERVO_CENTERING:
       servoCalibPos = SERVO_CENTRAL_POSITION; // установка центрального значения для текущей сервы
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
+      
+      EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);
+      EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
+      servoInfoDisplay(SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
       state = LEAD;
       return false;
 
     case SERVO_MOVE_UP:
       servoCalibPos++;
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      delay(SERVO_DELAY);
-      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
+      delay(SERVO_CALIBRATE_DELAY);
+      servoCalibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
       state = LEAD;
       return false;
 
     case SERVO_MOVE_DOWN:
       servoCalibPos--;
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      delay(SERVO_DELAY);
-      calibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
+      delay(SERVO_CALIBRATE_DELAY);
+      servoCalibrateDisplay(SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);
       state = LEAD;
       return false;
 
@@ -354,6 +384,10 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 #if VERSION == 10
       beep(1, 200);
 #endif
+
+      EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);
+      EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
+      servoInfoDisplay(SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
       state = LEAD;
       return false;
 
@@ -366,6 +400,10 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 #if VERSION == 10
       beep(1, 200);
 #endif
+
+      EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);
+      EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
+      servoInfoDisplay(SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
       state = LEAD;      
       return false;
 
@@ -381,18 +419,10 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       beep(1, 500);
 #endif
       servoCentering();   // центровка серв
-      //servoCounter = 0;
+      servoCounter = 0;
       servoCalibPos = SERVO_CENTRAL_POSITION;
-      //display.clearDisplay();   // чистим дисплей
-      //display.display();  
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setTextColor(WHITE);
-      display.setCursor(0, 0);
-      display.println(servoPlowMin);
-      display.setCursor(0, 16);
-      display.println(servoPlowMax);
-      display.display();
+      display.clearDisplay();   // чистим дисплей
+      display.display();  
       standIdleTimer = millis();  // запомнить время последнего действия
       state = LEAD;  
       return true;

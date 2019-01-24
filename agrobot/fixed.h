@@ -18,8 +18,8 @@
 
 #define SERVO_CENTRAL_POSITION  350  // центральное положение серв (1500 мкс)
 #define SERVO_FREQ  60  // частота ШИМ (~57Гц)
-#define SERVO_CALIBRATE_DELAY 1   // зедержка сервы при калибровке
-#define SERVO_DELAY 3 // задержка сервы
+#define SERVO_CALIBRATE_DELAY 1   // зедержка сервы при калибровке - влияет на скорость при калибровке
+#define SERVO_DELAY 3 // задержка сервы при движении - влияет на скорость в рабочем режиме
 
 // выводы драйвера моторов
 #define MOTOR_ENABLE_A_CH     10  // пин разрешающий работу мотора A

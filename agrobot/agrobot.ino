@@ -9,27 +9,60 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <PS2X_lib.h>
 
-// TODO: везде запилить проверку границ
+/*
+ * Прошивка для агробота прошедшая небольшое ревью, возможно некоторые моменты следовало бы запихнуть в классы,
+ * но для одного cpp файла смысла от этого особо не вижу. Сделать большее количество cpp файлов данная среда разработки не представляет возможным. 
+ * Были вынесены некоторые дефайны и константы в файлы config.h, fixed.h, pictures.h из-за большого их обилия и усложнения читабельности кода.
+ * В файле config.h находятся вещи, которые можно/нужно менять в зависимости от версии или параметров робота.
+ * В файле fixed.h находятся вещи, которые не надо трогать, они там только чтобы упростить читаемость кода.
+ * В файле pictures.h находятся изображения выводимые на дисплей.
+ * Также не вышло избавиться от всех глобальных переменных, но я старался. 
+ * Исправлена путаница с названием некоторых моторов(теперь есть только мотор А и B, а не моторы 1 и 2 и выходы A и B).
+ * Дефайны, константы и названия были отрефакторены и преведены к некоторому условному стандарту.
+ * Функционал был разложен по идемпотентным(относительно) функциям, т.е. просто разложил задачи на более мелкие и структуризировал. 
+ * Была немного пересмотрена логика опроса джойстика и управления - создан конечный автомат с состояниями в виде действий, которые 
+ * должны происходить, когды будет нажата кнопка или др., и лидирующим состоянием(LEAD), в которое переходят все действия, после отработки,
+ * в этом состоянии как раз и производится опрос кнопок. Такая система хорошо расширяется, изменяется и читается, проверено на кадете. 
+ * И не надо бегать по коду искать в каком if производится опрос конкретной кнопки.
+ * Такой же конечный автомат добавлен и для режима калибровки.
+ * В режим калибровки добавлен вывод на дисплей текущего состояния сервы - максимального и минимального положения, а также вывод текущего значения.
+ * Выбор серв в режиме калибровки закольцован. 
+ * Произведена оптимизация - в рабочем режиме ограничен вывод на дисплей повторных состояний, это многократно увеличивает скорость работы кода, но 
+ * уменьшает читаемость и увеличивает размер кода, что является необходимым
+ */
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
 Adafruit_SSD1306 display(DISPLAY_RESET_CH); // инициализация дисплея
 PS2X ps2x;  // cоздание экземпляра класса для джойстика
 
-
+// глобальное зло
 uint8_t motorSpeed = SPEED_MIN;   // скорость мотора, текущая
-// пока глобальные мб потом сделаю локальные
-uint32_t servoPlantMin = SERVO_CENTRAL_POSITION;   // минимальное положение диспенсора
-uint32_t servoPlantMax = SERVO_CENTRAL_POSITION;   // максимальное
-uint32_t servoPlowMin = SERVO_CENTRAL_POSITION;    // минимальное полпжение плуга
-uint32_t servoPlowMax = SERVO_CENTRAL_POSITION;    // максимальное
-uint32_t servoBucketMin = SERVO_CENTRAL_POSITION;  // минимальное положение ковша
-uint32_t servoBucketMax = SERVO_CENTRAL_POSITION;  // максимальное
-uint32_t servoBucketGrabMin = SERVO_CENTRAL_POSITION;  // минимальное положение схвата ковша
-uint32_t servoBucketGrabMax = SERVO_CENTRAL_POSITION;  // максимальное
+uint16_t servoPlantMin = SERVO_CENTRAL_POSITION;   // минимальное положение диспенсора    
+uint16_t servoPlantMax = SERVO_CENTRAL_POSITION;   // максимальное
+uint16_t servoPlowMin = SERVO_CENTRAL_POSITION;    // минимальное полпжение плуга
+uint16_t servoPlowMax = SERVO_CENTRAL_POSITION;    // максимальное
+uint16_t servoBucketMin = SERVO_CENTRAL_POSITION;  // минимальное положение ковша
+uint16_t servoBucketMax = SERVO_CENTRAL_POSITION;  // максимальное
+uint16_t servoBucketGrabMin = SERVO_CENTRAL_POSITION;  // минимальное положение схвата ковша
+uint16_t servoBucketGrabMax = SERVO_CENTRAL_POSITION;  // максимальное
 
-uint64_t standIdleTimer; // таймер отсчета времени бездействия
+uint32_t standIdleTimer; // таймер отсчета времени бездействия
 
-/// Ф-ии пока особо несмотрел, буду пересматривать после перестройки логики
+typedef enum
+{
+  EYE_UP,
+  EYE_DOWN,
+  EYE_LEFT,
+  EYE_RIGHT,
+  EYE_TIRED,
+  EYE_DIFFICULT,
+//  EYE_CUTE,   // эти два режима не используются, но если их использовать, они жрут много памяти
+//  EYE_WOW,
+  CLEAR
+} workDisplayState;   // перечисление состояния экрана в рабочем режиме (все ради оптимизации)
+
+
+// сами ф-ии особо не смотрел
 
 void motorSetup()   // инициализация моторов
 {
@@ -91,7 +124,7 @@ void readServoRange() // читает значения крайних полож
 }
 
 
-void displayImage(const unsigned char* image)
+void displayImage(const unsigned char* image)   // вывод на дисплей изображения
 {
   display.clearDisplay();
   display.drawBitmap(0, 0,  image, IMAGE_WIDTH, IMAGE_HEIGHT, 1);
@@ -99,18 +132,7 @@ void displayImage(const unsigned char* image)
 }
 
 
-void printText(char* str, uint8_t textsize)  //Вывод строки на дисплей
-{
-  display.clearDisplay();
-  display.setTextSize(textsize);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-  display.println(str);
-  display.display();
-}
-
-
-void servoCalibrateDisplay(char* servoName, uint32_t servoPosition)   // вывод на дисплей название сервы и ее текущую позицию
+void servoCalibrateDisplay(char* servoName, uint16_t servoPosition)   // вывод на дисплей название сервы и ее текущую позицию
 {
   display.clearDisplay();
   display.setTextSize(2);
@@ -123,7 +145,7 @@ void servoCalibrateDisplay(char* servoName, uint32_t servoPosition)   // выв�
 }
 
 
-void servoInfoDisplay(char* servoName, uint32_t servoPositionMin, uint32_t servoPositionMax)    // вывод на дисплей имя сервы и ее максимальное и минимальную позицию
+void servoInfoDisplay(char* servoName, uint16_t servoPositionMin, uint16_t servoPositionMax)    // вывод на дисплей имя сервы и ее максимальное и минимальную позицию
 {
   display.clearDisplay();
   display.setTextSize(1.5);
@@ -142,7 +164,53 @@ void servoInfoDisplay(char* servoName, uint32_t servoPositionMin, uint32_t servo
 }
 
 
-uint32_t rerangeSpeed(uint32_t mspeed)  // проверка и корректировка скорости
+void setDisplayState(workDisplayState state) // изменение состояния дисплея (все ради оптимизации)
+{
+  static workDisplayState m_state = CLEAR;
+  if(m_state == state) return;  // если состояние на дисплее такое же, то можно не перерисовывать
+  m_state = state;
+  switch(m_state)
+  {
+    case EYE_UP:
+      displayImage(eyes_up);  
+      break;
+
+    case EYE_DOWN:
+      displayImage(eyes_down);  
+      break;
+
+    case EYE_LEFT:
+      displayImage(eyes_left);  
+      break;
+
+    case EYE_RIGHT:
+      displayImage(eyes_right); 
+      break;
+
+    case EYE_TIRED:
+      displayImage(eyes_tired); 
+      break;
+
+    case EYE_DIFFICULT:
+      displayImage(eyes_difficult); 
+      break;
+/*      
+    case EYE_CUTE:      // эти два режима не используются, но если их использовать, они жрут много памяти
+      displayImage(eyes_cute); 
+      break;
+
+    case EYE_WOW:
+      displayImage(eyes_wow); 
+      break;
+*/
+    case CLEAR:
+      display.clearDisplay();
+      display.display();
+      break;
+  }
+}
+
+uint16_t rerangeSpeed(int16_t mspeed)  // проверка и корректировка скорости (параметр знаковый, чтоб переполнения не было) 
 {
   if (mspeed > SPEED_MAX) return SPEED_MAX;
   if (mspeed < SPEED_MIN) return SPEED_MIN;
@@ -151,23 +219,23 @@ uint32_t rerangeSpeed(uint32_t mspeed)  // проверка и корректи�
 
 
 //Запуск двигателей 
-void setSpeedRight(int32_t mspeed)  // первый двигатель - А
+void setSpeedRight(int16_t mspeed)  // первый двигатель - А
 {
   if (mspeed > 0)   // если заданная скорость больше нуля, то задаем Прямой ШИМ без инвертирования
   {
     analogWrite(MOTOR_PWM_A_CH, 255);
     digitalWrite(MOTOR_PWM_INVERSE_A_CH, LOW);
   }
-  else    // если меньше, то инвертируем ШИМ !!!( по идее еще бы и значения инвертировать нужно)
+  else    // если меньше, то инвертируем направление
   {
     digitalWrite(MOTOR_PWM_INVERSE_A_CH, HIGH);
     analogWrite(MOTOR_PWM_A_CH, 0);
   }
-  analogWrite(MOTOR_ENABLE_A_CH, abs(mspeed));    //!!! тут еще мб придется поиграть с заполнением, т.к. сейчас скорость в обратную сторону движения не будет совпадать с прямой
+  analogWrite(MOTOR_ENABLE_A_CH, abs(mspeed));    
 }
 
 
-void setSpeedLeft(int32_t mspeed) // второй двигатель - B
+void setSpeedLeft(int16_t mspeed) // второй двигатель - B
 {
   if (mspeed > 0)
   {
@@ -179,7 +247,7 @@ void setSpeedLeft(int32_t mspeed) // второй двигатель - B
     analogWrite(MOTOR_PWM_B_CH, 255);
     digitalWrite(MOTOR_PWM_INVERSE_B_CH, LOW);
   }
-  analogWrite(MOTOR_ENABLE_B_CH, abs(mspeed));    //!!! аналогично
+  analogWrite(MOTOR_ENABLE_B_CH, abs(mspeed));   
 }
 
 
@@ -193,7 +261,7 @@ void stopMotors()   // остановка двигателей
 
 
 #if VERSION == 11
-void beep(uint32_t ton, uint32_t tim) // для проигрывания тона
+void beep(uint16_t ton, uint16_t tim) // для проигрывания тона
 {
   tone(BUZZER_CH, ton, tim);
   delay(tim + 20);
@@ -202,9 +270,9 @@ void beep(uint32_t ton, uint32_t tim) // для проигрывания тон�
 
 
 #if VERSION == 10
-void beep(uint8_t num, uint32_t tim)
+void beep(uint8_t num, uint16_t tim)
 {
-  for (uint32_t i = 0; i < num; i++)
+  for (uint16_t i = 0; i < num; i++)
   {
     digitalWrite(BUZZER_CH, HIGH);
     delay(tim);
@@ -232,7 +300,7 @@ void beepAlarm() // мелодия предупреждения
 
 void plowUp()   // поднять плуг
 {
-  for (uint32_t plowPulseLen = servoPlowMin; plowPulseLen < servoPlowMax; plowPulseLen++)
+  for (uint16_t plowPulseLen = servoPlowMin; plowPulseLen < servoPlowMax; plowPulseLen++)
   {
     pwm.setPWM(SERVO_PLOW_CH, 0, plowPulseLen);
     delay(SERVO_DELAY);
@@ -242,7 +310,7 @@ void plowUp()   // поднять плуг
 
 void plowDown() // опустить плуг
 {
-  for (uint32_t plowPulseLen = servoPlowMax; plowPulseLen > servoPlowMin; plowPulseLen--)
+  for (uint16_t plowPulseLen = servoPlowMax; plowPulseLen > servoPlowMin; plowPulseLen--)
   {
     pwm.setPWM(SERVO_PLOW_CH, 0, plowPulseLen);
     delay(SERVO_DELAY);
@@ -252,7 +320,7 @@ void plowDown() // опустить плуг
 
 void plantActivate()  // активировать диспенсер
 {
-  static uint32_t plantPulseLen = SERVO_CENTRAL_POSITION;
+  static uint16_t plantPulseLen = SERVO_CENTRAL_POSITION;
   for (plantPulseLen = servoPlantMin; plantPulseLen < servoPlantMax; plantPulseLen++)
   {
     pwm.setPWM(SERVO_PLANT_CH, 0, plantPulseLen);
@@ -287,9 +355,9 @@ void adcDataCounter(float* voltage, float* current)   // вычисление з
 bool calibrationFSM()   // режим калибровки, нетривиальный конечный автомат, где состояния управляются от одного лидера, состояния переключаются по нажатию кнопок джойстика 
 {
   static int8_t servoCounter = 0;  // каретка, переключающаяся от сервы к серве (нужен знаковый) - текущая выбранная серва из массива
-  static uint32_t servoCalibPos = SERVO_CENTRAL_POSITION;   // текущая позиция выбранной сервы
-  static uint32_t tempInfoPositionMin = SERVO_CENTRAL_POSITION;   // доп переменные, для считывания информации из епрома о выбранной серве
-  static uint32_t tempInfoPositionMax = SERVO_CENTRAL_POSITION;
+  static uint16_t servoCalibPos = SERVO_CENTRAL_POSITION;   // текущая позиция выбранной сервы
+  static uint16_t tempInfoPositionMin = SERVO_CENTRAL_POSITION;   // доп переменные, для считывания информации из епрома о выбранной серве
+  static uint16_t tempInfoPositionMax = SERVO_CENTRAL_POSITION;
   static enum   
   {
     LEAD,   // главный режим, отсюда идет переход ко всем остальным состояниям
@@ -350,7 +418,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
     case SERVO_CENTERING:   // центрирование выбранной сервы
       servoCalibPos = SERVO_CENTRAL_POSITION; // установка центрального значения для текущей сервы
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos);
-      
+  
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);    // после центрирования сервы считываем о ней информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
@@ -382,7 +450,6 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 #if VERSION == 10
       beep(1, 200);
 #endif
-
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после записи, считываем информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
@@ -398,7 +465,6 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 #if VERSION == 10
       beep(1, 200);
 #endif
-
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после записи, считываем информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
@@ -430,8 +496,8 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
 bool workFSM()    // рабочий режим
 {
   static bool isPlowDown = false;  // опущен ли плуг
-  static uint32_t bucketPulseLen = SERVO_CENTRAL_POSITION;    // текущие положения серв ковша
-  static uint32_t bucketGrabPulseLen = SERVO_CENTRAL_POSITION;  // схвата ковша
+  static uint16_t bucketPulseLen = SERVO_CENTRAL_POSITION;    // текущие положения серв ковша
+  static uint16_t bucketGrabPulseLen = SERVO_CENTRAL_POSITION;  // схвата ковша
   static enum
   {
     LEAD,  // управляющий режим
@@ -474,7 +540,7 @@ bool workFSM()    // рабочий режим
     case FORWARD:
       setSpeedRight(motorSpeed);    // задаем скорости бортам моторов
       setSpeedLeft(motorSpeed);
-      displayImage(eyes_up);  
+      setDisplayState(EYE_UP);  
       standIdleTimer = millis();  // запомнить время последнего действия
       state = LEAD;
       return false;
@@ -482,7 +548,7 @@ bool workFSM()    // рабочий режим
     case BACKWARD:
       setSpeedRight(-motorSpeed);
       setSpeedLeft(-motorSpeed);
-      displayImage(eyes_down);  
+      setDisplayState(EYE_DOWN);   
       standIdleTimer = millis();  // запомнить время последнего действия
       state = LEAD;
       return false;
@@ -490,7 +556,7 @@ bool workFSM()    // рабочий режим
     case LEFT:
       setSpeedRight(motorSpeed);
       setSpeedLeft(-motorSpeed);
-      displayImage(eyes_left);  
+      setDisplayState(EYE_LEFT);  
       standIdleTimer = millis();
       state = LEAD;
       return false;
@@ -498,7 +564,7 @@ bool workFSM()    // рабочий режим
     case RIGHT:
       setSpeedRight(-motorSpeed);
       setSpeedLeft(motorSpeed);
-      displayImage(eyes_right);  
+      setDisplayState(EYE_RIGHT);  
       standIdleTimer = millis();
       state = LEAD;
       return false;
@@ -531,14 +597,14 @@ bool workFSM()    // рабочий режим
         plowDown();    // опускаем плуг
         isPlowDown = true;
       }
-      displayImage(eyes_difficult);  
+      setDisplayState(EYE_DIFFICULT);    
       standIdleTimer = millis();
       state = LEAD;
       return false;
 
      case PLANT_ACTIVATION:
       plantActivate();
-      displayImage(eyes_difficult);  
+      setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
       state = LEAD;
       return false;
@@ -548,7 +614,7 @@ bool workFSM()    // рабочий режим
       if (bucketPulseLen > servoBucketMax) bucketPulseLen = servoBucketMax;
       if (bucketPulseLen < servoBucketMin) bucketPulseLen = servoBucketMin;
       pwm.setPWM(SERVO_BUCKET_CH, 0, bucketPulseLen);
-      displayImage(eyes_difficult);  
+      setDisplayState(EYE_DIFFICULT);  
       standIdleTimer = millis();
       state = LEAD;
       return false;
@@ -558,7 +624,7 @@ bool workFSM()    // рабочий режим
       if (bucketPulseLen > servoBucketMax) bucketPulseLen = servoBucketMax;
       if (bucketPulseLen < servoBucketMin) bucketPulseLen = servoBucketMin;
       pwm.setPWM(SERVO_BUCKET_CH, 0, bucketPulseLen);
-      displayImage(eyes_difficult);  
+      setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
       state = LEAD;
       return false;
@@ -568,7 +634,7 @@ bool workFSM()    // рабочий режим
       if (bucketGrabPulseLen > servoBucketGrabMax) bucketGrabPulseLen = servoBucketGrabMax;
       if (bucketGrabPulseLen < servoBucketGrabMin) bucketGrabPulseLen = servoBucketGrabMin;
       pwm.setPWM(SERVO_BUCKET_GRAB_CH, 0, bucketGrabPulseLen);
-      displayImage(eyes_difficult);  
+      setDisplayState(EYE_DIFFICULT);  
       standIdleTimer = millis();
       state = LEAD;
       return false;
@@ -578,7 +644,7 @@ bool workFSM()    // рабочий режим
       if (bucketGrabPulseLen > servoBucketGrabMax) bucketGrabPulseLen = servoBucketGrabMax;
       if (bucketGrabPulseLen < servoBucketGrabMin) bucketGrabPulseLen = servoBucketGrabMin;
       pwm.setPWM(SERVO_BUCKET_GRAB_CH, 0, bucketGrabPulseLen);
-      displayImage(eyes_difficult);  
+      setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
       state = LEAD;
       return false;
@@ -587,6 +653,7 @@ bool workFSM()    // рабочий режим
       isPlowDown = false;   // сбрасываем метку о состоянии плуга
       bucketPulseLen = SERVO_CENTRAL_POSITION;
       bucketGrabPulseLen = SERVO_CENTRAL_POSITION;
+      setDisplayState(CLEAR);  
       standIdleTimer = millis();
       state = LEAD;
       return true;
@@ -636,6 +703,7 @@ void loop()
   static bool m_exit = false; // доп переменная для хранения данных о выходе из некоторых конечных автоматов
   static float voltage = 0;
   static float current = 0;
+  static uint32_t lastBeepTime = 0; // время последнего пищания об отсутствии заряда
   static enum 
   {
     WORK,   // рабочий режим - ездит, кривляется
@@ -643,7 +711,7 @@ void loop()
     TIRED,  // если робот устал - низкое напряжение
   } state;
 
-  ps2x.read_gamepad(false, 0); // считывание данных с джойстика и установка скорости вибрации !!! (пока так)
+  ps2x.read_gamepad(false, 0); // считывание данных с джойстика и установка скорости вибрации
   adcDataCounter(&voltage, &current); // обновляем донные с АЦП
   if (voltage < MIN_MCU_VOLTAGE) state = TIRED;   // если напряжение маленькое
   switch(state)
@@ -668,9 +736,21 @@ void loop()
       }
       else
       {
-        display.clearDisplay();
-        display.drawBitmap(0, 0,  eyes_difficult, IMAGE_WIDTH, IMAGE_HEIGHT, 1);
-        display.display();
+        setDisplayState(EYE_TIRED);  
+        if((millis() - lastBeepTime) > TIME_BEEP_LOW_VOLTAGE_CYCLE) // если прошло достаточно времени
+        {        
+          lastBeepTime = millis();
+#ifdef VERSION == 11
+          beep(NOTE_B, 400);
+          beep(NOTE_G, 350);
+          beep(NOTE_E, 150);
+          beep(NOTE_C, 400);
+          noTone(BUZZER_CH);
+#endif
+#ifdef VERSION == 10
+          beep(2, 100);
+#endif
+        }
       }
       delay(10);
       break;

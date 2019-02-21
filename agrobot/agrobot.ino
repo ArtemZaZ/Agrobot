@@ -2,9 +2,7 @@
 #include "pictures.h"
 #include "stdint.h"
 #include <SPI.h>
-#include <Wire.h>
 #include <EEPROM.h>
-#include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <PS2X_lib.h>
@@ -31,9 +29,9 @@
  * уменьшает читаемость и увеличивает размер кода, что является необходимым
  */
 
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
-Adafruit_SSD1306 display(DISPLAY_RESET_CH); // инициализация дисплея
-PS2X ps2x;  // cоздание экземпляра класса для джойстика
+volatile Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
+volatile Adafruit_SSD1306 display(DISPLAY_RESET_CH); // инициализация дисплея
+volatile PS2X ps2x;  // cоздание экземпляра класса для джойстика
 
 // глобальное зло
 uint8_t motorSpeed = SPEED_MIN;   // скорость мотора, текущая
@@ -56,11 +54,16 @@ typedef enum
   EYE_RIGHT,
   EYE_TIRED,
   EYE_DIFFICULT,
-//  EYE_CUTE,   // эти два режима не используются, но если их использовать, они жрут много памяти
-//  EYE_WOW,
+  //EYE_CUTE,   // эти два режима не используются, но если их использовать, они жрут много памяти
+  EYE_WOW,
   CLEAR
 } workDisplayState;   // перечисление состояния экрана в рабочем режиме (все ради оптимизации)
 
+int freeRam () {
+  extern int __heap_start, *__brkval; 
+  int v; 
+  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval); 
+}
 
 // сами ф-ии особо не смотрел
 
@@ -194,15 +197,15 @@ void setDisplayState(workDisplayState state) // изменение состоя�
     case EYE_DIFFICULT:
       displayImage(eyes_difficult); 
       break;
-/*      
+/*
     case EYE_CUTE:      // эти два режима не используются, но если их использовать, они жрут много памяти
       displayImage(eyes_cute); 
       break;
-
+*/
     case EYE_WOW:
       displayImage(eyes_wow); 
       break;
-*/
+      
     case CLEAR:
       display.clearDisplay();
       display.display();
@@ -321,9 +324,11 @@ void plowDown() // опустить плуг
 void plantActivate()  // активировать диспенсер
 {
   static uint16_t plantPulseLen = SERVO_CENTRAL_POSITION;
+  Serial.println(freeRam());
   for (plantPulseLen = servoPlantMin; plantPulseLen < servoPlantMax; plantPulseLen++)
   {
     pwm.setPWM(SERVO_PLANT_CH, 0, plantPulseLen);
+    Serial.println(freeRam());
     delay(SERVO_DELAY);
   }
   delay(PLANT_ACTIVE_DELAY);   
@@ -498,6 +503,7 @@ bool workFSM()    // рабочий режим
   static bool isPlowDown = false;  // опущен ли плуг
   static uint16_t bucketPulseLen = SERVO_CENTRAL_POSITION;    // текущие положения серв ковша
   static uint16_t bucketGrabPulseLen = SERVO_CENTRAL_POSITION;  // схвата ковша
+  static uint32_t lastBeepTime = 0; // время последнего пищания 
   static enum
   {
     LEAD,  // управляющий режим
@@ -571,6 +577,27 @@ bool workFSM()    // рабочий режим
 
     case NOTHING:
       stopMotors();
+      // робот переходит в режим бездействия, 
+      // нет доп проверок на действия, т.к. NOTHING идет в конечном автомате перед действиями и, если они происходят, то сюда не зайдет
+      if(millis() - standIdleTimer > TIME_STAND_IDLE) // робот напоминает о режиме бездействия
+      {
+        if(millis() - lastBeepTime > TIME_BEEP_CYCLE)
+        {
+          lastBeepTime = millis();
+          setDisplayState(EYE_WOW);
+#if VERSION == 11
+          beep(NOTE_G, 300);
+          beep(NOTE_G, 150);
+          beep(NOTE_F, 150);
+          beep(NOTE_E, 150);
+          beep(NOTE_A, 300);
+          noTone(BUZZER_CH);
+#endif
+#if VERSION == 10
+          beep(3, 100);
+#endif  
+        }  
+      }      
       state = LEAD;      
       return false;
 
@@ -603,9 +630,10 @@ bool workFSM()    // рабочий режим
       return false;
 
      case PLANT_ACTIVATION:
+      setDisplayState(EYE_DIFFICULT); 
       plantActivate();
-      setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
+      Serial.println(freeRam());
       state = LEAD;
       return false;
 
@@ -654,6 +682,15 @@ bool workFSM()    // рабочий режим
       bucketPulseLen = SERVO_CENTRAL_POSITION;
       bucketGrabPulseLen = SERVO_CENTRAL_POSITION;
       setDisplayState(CLEAR);  
+#if VERSION == 11
+      beep(NOTE_B, 300);
+      beep(NOTE_G, 300);
+      beep(NOTE_C, 300);      
+      noTone(BUZZER_CH);
+#endif
+#if VERSION == 10
+      beep(1, 500);
+#endif
       standIdleTimer = millis();
       state = LEAD;
       return true;
@@ -664,6 +701,9 @@ bool workFSM()    // рабочий режим
 
 void setup() 
 {
+  Serial.begin(9600);
+  Serial.println(freeRam());
+
   displaySetup(); // инициализация дисплея
   motorSetup();   // инициализация моторов
   servoSetup();   // инициализация серв
@@ -690,9 +730,7 @@ void setup()
 #endif
 
   analogReference(EXTERNAL);  // настройка опорного напряжения для АЦП: внешний источник на выводе AREF
-  
-  Serial.begin(9600);   // для отладки
-  
+    
   standIdleTimer = millis(); // запомнить время последнего действия
 }
 
@@ -719,7 +757,7 @@ void loop()
     case WORK:
       m_exit = workFSM();   // крутимся в рабочем режиме, пока не придет флаг о выходе из него - вернется true
       if(m_exit)  state = CALIBRATION;
-      m_exit = true;
+      m_exit = false;
       break;
 
     case CALIBRATION:
@@ -737,7 +775,7 @@ void loop()
       else
       {
         setDisplayState(EYE_TIRED);  
-        if((millis() - lastBeepTime) > TIME_BEEP_LOW_VOLTAGE_CYCLE) // если прошло достаточно времени
+        if((millis() - lastBeepTime) > TIME_BEEP_CYCLE) // если прошло достаточно времени
         {        
           lastBeepTime = millis();
 #ifdef VERSION == 11
@@ -755,6 +793,6 @@ void loop()
       delay(10);
       break;
   }
-  delay(5);
+  delay(15);
 }
 

@@ -59,12 +59,6 @@ typedef enum
   CLEAR
 } workDisplayState;   // перечисление состояния экрана в рабочем режиме (все ради оптимизации)
 
-int freeRam () {
-  extern int __heap_start, *__brkval; 
-  int v; 
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval); 
-}
-
 // сами ф-ии особо не смотрел
 
 void motorSetup()   // инициализация моторов
@@ -324,11 +318,9 @@ void plowDown() // опустить плуг
 void plantActivate()  // активировать диспенсер
 {
   static uint16_t plantPulseLen = SERVO_CENTRAL_POSITION;
-  Serial.println(freeRam());
   for (plantPulseLen = servoPlantMin; plantPulseLen < servoPlantMax; plantPulseLen++)
   {
     pwm.setPWM(SERVO_PLANT_CH, 0, plantPulseLen);
-    Serial.println(freeRam());
     delay(SERVO_DELAY);
   }
   delay(PLANT_ACTIVE_DELAY);   
@@ -389,12 +381,11 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       if (ps2x.ButtonPressed(PSB_TRIANGLE)) { state = SERVO_FIND_MAX; }
       if (ps2x.ButtonPressed(PSB_CROSS)) { state = SERVO_FIND_MIN; }
       if (ps2x.Button(PSB_L2) && ps2x.Button(PSB_R2)) { state = EXIT; }
-      return false;
+      break;
 
     case EEPROM_CLEAR:
       // тут будет очистка епрома
-      state = LEAD;
-      return false;
+      break;
 
     case SERVO_NEXT:  // делаем кольцевой массив, можем ходить от серве к серве по замкнутому кругу
       servoCounter++;  
@@ -405,8 +396,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после выбора сервы считываем о ней информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
-      state = LEAD;      
-      return false;
+      break;
 
     case SERVO_PREV:  // делаем кольцевой массив, можем ходить от серве к серве по замкнутому кругу
       servoCounter--;
@@ -417,8 +407,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после выбора сервы считываем о ней информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
-      state = LEAD;
-      return false;
+      break;
 
     case SERVO_CENTERING:   // центрирование выбранной сервы
       servoCalibPos = SERVO_CENTRAL_POSITION; // установка центрального значения для текущей сервы
@@ -427,8 +416,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);    // после центрирования сервы считываем о ней информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
-      state = LEAD;
-      return false;
+      break;
 
     case SERVO_MOVE_UP:  
       servoCalibPos++;    // увеличиваем положение сервы
@@ -436,15 +424,14 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       delay(SERVO_CALIBRATE_DELAY); // делаем задержку
       servoCalibrateDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], servoCalibPos);   // выводим имя сервы и текущее положение
       state = LEAD;
-      return false;
+      break;
 
     case SERVO_MOVE_DOWN:
       servoCalibPos--;    // уменьшаем положение сервы
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos); // задаем его
       delay(SERVO_CALIBRATE_DELAY); // делаем задержку
       servoCalibrateDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], servoCalibPos); // выводим имя сервы и текущее положение
-      state = LEAD;
-      return false;
+      break;
 
     case SERVO_FIND_MAX:  // если найдено максимальное положение сервы
       EEPROM.put(EEPROM_ADDR_SERV_MAX[servoCounter], servoCalibPos);  // записываем его в епром по адресу из массива и сигналим
@@ -458,8 +445,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после записи, считываем информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
-      state = LEAD;
-      return false;
+      break;
 
     case SERVO_FIND_MIN:  // если найдено максимальное положение сервы
       EEPROM.put(EEPROM_ADDR_SERV_MIN[servoCounter], servoCalibPos);  // записываем его в епром по адресу из массива и сигналим
@@ -473,8 +459,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после записи, считываем информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
-      state = LEAD;      
-      return false;
+      break;
 
     case EXIT:    // выход из режима калибровки
       readServoRange(); // чтение границ серв из епрома и запись в глобальные переменные
@@ -495,6 +480,8 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       state = LEAD;  
       return true;
   }
+  state = LEAD;
+  return false;
 }
 
 
@@ -541,39 +528,35 @@ bool workFSM()    // рабочий режим
       if (ps2x.Button(PSB_CIRCLE)) { state = BUCKET_GRAB_CLAMP; }
       if (ps2x.Button(PSB_SQUARE)) { state = BUCKET_GRAB_LOOSE; }
       if (ps2x.Button(PSB_L3) && ps2x.Button(PSB_R3)) { state = EXIT; }
-      return false;
+      break;
 
     case FORWARD:
       setSpeedRight(motorSpeed);    // задаем скорости бортам моторов
       setSpeedLeft(motorSpeed);
       setDisplayState(EYE_UP);  
       standIdleTimer = millis();  // запомнить время последнего действия
-      state = LEAD;
-      return false;
+      break;
 
     case BACKWARD:
       setSpeedRight(-motorSpeed);
       setSpeedLeft(-motorSpeed);
       setDisplayState(EYE_DOWN);   
       standIdleTimer = millis();  // запомнить время последнего действия
-      state = LEAD;
-      return false;
+      break;
 
     case LEFT:
       setSpeedRight(motorSpeed);
       setSpeedLeft(-motorSpeed);
       setDisplayState(EYE_LEFT);  
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
     case RIGHT:
       setSpeedRight(-motorSpeed);
       setSpeedLeft(motorSpeed);
       setDisplayState(EYE_RIGHT);  
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
     case NOTHING:
       stopMotors();
@@ -598,20 +581,17 @@ bool workFSM()    // рабочий режим
 #endif  
         }  
       }      
-      state = LEAD;      
-      return false;
+      break;
 
     case SPEED_UP:
       motorSpeed = rerangeSpeed(motorSpeed + SPEED_STEP);   // переоценка скоростей, если они выходят из диапазона 
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
     case SPEED_DOWN:
       motorSpeed = rerangeSpeed(motorSpeed - SPEED_STEP);   // переоценка скоростей, если они выходят из диапазона 
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
     case PLOW_SWITCH:
       if (isPlowDown) 
@@ -626,16 +606,13 @@ bool workFSM()    // рабочий режим
       }
       setDisplayState(EYE_DIFFICULT);    
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
      case PLANT_ACTIVATION:
       setDisplayState(EYE_DIFFICULT); 
       plantActivate();
       standIdleTimer = millis();
-      Serial.println(freeRam());
-      state = LEAD;
-      return false;
+      break;
 
     case BUCKET_UP:
       bucketPulseLen = bucketPulseLen - SERVO_STEP;
@@ -644,8 +621,7 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_CH, 0, bucketPulseLen);
       setDisplayState(EYE_DIFFICULT);  
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
     case BUCKET_DOWN:
       bucketPulseLen = bucketPulseLen + SERVO_STEP;
@@ -654,8 +630,7 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_CH, 0, bucketPulseLen);
       setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
     case BUCKET_GRAB_CLAMP:
       bucketGrabPulseLen = bucketGrabPulseLen + SERVO_STEP;
@@ -664,8 +639,7 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_GRAB_CH, 0, bucketGrabPulseLen);
       setDisplayState(EYE_DIFFICULT);  
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
+      break;
 
     case BUCKET_GRAB_LOOSE:
       bucketGrabPulseLen = bucketGrabPulseLen - SERVO_STEP;
@@ -674,9 +648,8 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_GRAB_CH, 0, bucketGrabPulseLen);
       setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
-      state = LEAD;
-      return false;
-
+      break;
+      
     case EXIT:
       isPlowDown = false;   // сбрасываем метку о состоянии плуга
       bucketPulseLen = SERVO_CENTRAL_POSITION;
@@ -695,15 +668,14 @@ bool workFSM()    // рабочий режим
       state = LEAD;
       return true;
   }
+  state = LEAD;
+  return false;
 }
 
 
 
 void setup() 
 {
-  Serial.begin(9600);
-  Serial.println(freeRam());
-
   displaySetup(); // инициализация дисплея
   motorSetup();   // инициализация моторов
   servoSetup();   // инициализация серв
@@ -795,4 +767,3 @@ void loop()
   }
   delay(15);
 }
-

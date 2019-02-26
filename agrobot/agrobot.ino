@@ -3,6 +3,7 @@
 #include "stdint.h"
 #include <SPI.h>
 #include <EEPROM.h>
+#include <Wire.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <PS2X_lib.h>
@@ -27,10 +28,11 @@
  * Выбор серв в режиме калибровки закольцован. 
  * Произведена оптимизация - в рабочем режиме ограничен вывод на дисплей повторных состояний, это многократно увеличивает скорость работы кода, но 
  * уменьшает читаемость и увеличивает размер кода, что является необходимым
+ * Сделал табы перед препроцесоорными дерективами в пределах ф-ий(хоть это и не по стандарту, но иначе не читается нормально)
  */
 
 volatile Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); //инициализация i2c для pca с адресом 0x40
-volatile Adafruit_SSD1306 display(DISPLAY_RESET_CH); // инициализация дисплея
+volatile Adafruit_SSD1306 display(IMAGE_WIDTH, IMAGE_HEIGHT, &Wire, DISPLAY_RESET_CH); // инициализация дисплея
 volatile PS2X ps2x;  // cоздание экземпляра класса для джойстика
 
 // глобальное зло
@@ -282,16 +284,17 @@ void beep(uint8_t num, uint16_t tim)
 
 void beepAlarm() // мелодия предупреждения
 {
-#if VERSION == 11
-  //мелодия
-  beep(NOTE_G, 50);
-  beep(NOTE_E, 50);
-  beep(NOTE_C, 50);
-  noTone(BUZZER_CH);
-#endif
-#if VERSION == 10
-  beep(3, 100);
-#endif
+  #if VERSION == 11
+    //мелодия
+    beep(NOTE_G, 50);
+    beep(NOTE_E, 50);
+    beep(NOTE_C, 50);
+    noTone(BUZZER_CH);
+  #endif
+
+  #if VERSION == 10
+    beep(3, 100);
+  #endif
 }
 
 
@@ -381,10 +384,11 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       if (ps2x.ButtonPressed(PSB_TRIANGLE)) { state = SERVO_FIND_MAX; }
       if (ps2x.ButtonPressed(PSB_CROSS)) { state = SERVO_FIND_MIN; }
       if (ps2x.Button(PSB_L2) && ps2x.Button(PSB_R2)) { state = EXIT; }
-      break;
+      return false;
 
     case EEPROM_CLEAR:
       // тут будет очистка епрома
+      state = LEAD;
       break;
 
     case SERVO_NEXT:  // делаем кольцевой массив, можем ходить от серве к серве по замкнутому кругу
@@ -396,6 +400,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после выбора сервы считываем о ней информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
+      state = LEAD;
       break;
 
     case SERVO_PREV:  // делаем кольцевой массив, можем ходить от серве к серве по замкнутому кругу
@@ -407,6 +412,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после выбора сервы считываем о ней информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
+      state = LEAD;
       break;
 
     case SERVO_CENTERING:   // центрирование выбранной сервы
@@ -416,6 +422,7 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);    // после центрирования сервы считываем о ней информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
+      state = LEAD;
       break;
 
     case SERVO_MOVE_UP:  
@@ -431,47 +438,50 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       pwm.setPWM(SERVO_ITERATED[servoCounter], 0, servoCalibPos); // задаем его
       delay(SERVO_CALIBRATE_DELAY); // делаем задержку
       servoCalibrateDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], servoCalibPos); // выводим имя сервы и текущее положение
+      state = LEAD;
       break;
 
     case SERVO_FIND_MAX:  // если найдено максимальное положение сервы
       EEPROM.put(EEPROM_ADDR_SERV_MAX[servoCounter], servoCalibPos);  // записываем его в епром по адресу из массива и сигналим
-#if VERSION == 11
-      beep(NOTE_C, 200);  
-      noTone(BUZZER_CH);
-#endif
-#if VERSION == 10
-      beep(1, 200);
-#endif
+      #if VERSION == 11
+        beep(NOTE_C, 200);  
+        noTone(BUZZER_CH);
+      #endif
+      #if VERSION == 10
+        beep(1, 200);
+      #endif
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после записи, считываем информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
+      state = LEAD;
       break;
 
     case SERVO_FIND_MIN:  // если найдено максимальное положение сервы
       EEPROM.put(EEPROM_ADDR_SERV_MIN[servoCounter], servoCalibPos);  // записываем его в епром по адресу из массива и сигналим
-#if VERSION == 11
-      beep(NOTE_C, 200);
-      noTone(BUZZER_CH);
-#endif
-#if VERSION == 10
-      beep(1, 200);
-#endif
+      #if VERSION == 11
+        beep(NOTE_C, 200);  
+        noTone(BUZZER_CH);
+      #endif
+      #if VERSION == 10
+        beep(1, 200);
+      #endif
       EEPROM.get(EEPROM_ADDR_SERV_MIN[servoCounter], tempInfoPositionMin);  // после записи, считываем информацию из епрома и выводим на дисплей
       EEPROM.get(EEPROM_ADDR_SERV_MAX[servoCounter], tempInfoPositionMax);     
       servoInfoDisplay((char*)SERVO_NAMES_ITERATED[servoCounter], tempInfoPositionMin, tempInfoPositionMax);
+      state = LEAD;
       break;
 
     case EXIT:    // выход из режима калибровки
-      readServoRange(); // чтение границ серв из епрома и запись в глобальные переменные
-#if VERSION == 11
-      beep(NOTE_C, 300);
-      beep(NOTE_G, 300);
-      beep(NOTE_B, 300);
-      noTone(BUZZER_CH);
-#endif
-#if VERSION == 10
-      beep(1, 500);
-#endif
+      readServoRange(); // чтение границ серв из епрома и запись в глобальные переменные 
+      #if VERSION == 11
+        beep(NOTE_C, 300);
+        beep(NOTE_G, 300);
+        beep(NOTE_B, 300);
+        noTone(BUZZER_CH);
+      #endif
+      #if VERSION == 10
+        beep(1, 500);
+      #endif
       servoCentering();   // центровка серв
       servoCounter = 0;   // сбрасываем каретку
       servoCalibPos = SERVO_CENTRAL_POSITION;   // сбрасываем положение
@@ -480,7 +490,6 @@ bool calibrationFSM()   // режим калибровки, нетривиаль
       state = LEAD;  
       return true;
   }
-  state = LEAD;
   return false;
 }
 
@@ -509,7 +518,7 @@ bool workFSM()    // рабочий режим
     BUCKET_GRAB_LOOSE,  // ослабить схват
     EXIT  // переход к другому режиму 
   } state;
-
+  
   switch(state)
   {
     case LEAD:
@@ -535,6 +544,7 @@ bool workFSM()    // рабочий режим
       setSpeedLeft(motorSpeed);
       setDisplayState(EYE_UP);  
       standIdleTimer = millis();  // запомнить время последнего действия
+      state = LEAD;
       break;
 
     case BACKWARD:
@@ -542,6 +552,7 @@ bool workFSM()    // рабочий режим
       setSpeedLeft(-motorSpeed);
       setDisplayState(EYE_DOWN);   
       standIdleTimer = millis();  // запомнить время последнего действия
+      state = LEAD;
       break;
 
     case LEFT:
@@ -549,6 +560,7 @@ bool workFSM()    // рабочий режим
       setSpeedLeft(-motorSpeed);
       setDisplayState(EYE_LEFT);  
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case RIGHT:
@@ -556,6 +568,7 @@ bool workFSM()    // рабочий режим
       setSpeedLeft(motorSpeed);
       setDisplayState(EYE_RIGHT);  
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case NOTHING:
@@ -568,29 +581,78 @@ bool workFSM()    // рабочий режим
         {
           lastBeepTime = millis();
           setDisplayState(EYE_WOW);
-#if VERSION == 11
-          beep(NOTE_G, 300);
-          beep(NOTE_G, 150);
-          beep(NOTE_F, 150);
-          beep(NOTE_E, 150);
-          beep(NOTE_A, 300);
-          noTone(BUZZER_CH);
-#endif
-#if VERSION == 10
-          beep(3, 100);
-#endif  
+          #if VERSION == 11
+            beep(NOTE_G, 300);
+            beep(NOTE_G, 150);
+            beep(NOTE_F, 150);
+            beep(NOTE_E, 150);
+            beep(NOTE_A, 300);
+            noTone(BUZZER_CH);
+          #endif
+          #if VERSION == 10
+            beep(3, 100);
+          #endif  
         }  
       }      
+      state = LEAD;
       break;
 
     case SPEED_UP:
       motorSpeed = rerangeSpeed(motorSpeed + SPEED_STEP);   // переоценка скоростей, если они выходят из диапазона 
+      if(motorSpeed < SPEED_MAX)
+      {
+        #ifdef VERSION == 11
+          beep(NOTE_F, 50);
+          beep(NOTE_A, 50);
+          noTone(BUZZER_CH);
+        #endif
+        #ifdef VERSION == 10
+          beep(2, 50);
+        #endif
+      }
+      else
+      {        
+        #ifdef VERSION == 11
+          beep(NOTE_A, 100);
+          beep(NOTE_A, 50);
+          beep(NOTE_A, 100);
+          noTone(BUZZER_CH);
+        #endif
+        #ifdef VERSION == 10
+          beep(2, 50);
+        #endif
+      }
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case SPEED_DOWN:
       motorSpeed = rerangeSpeed(motorSpeed - SPEED_STEP);   // переоценка скоростей, если они выходят из диапазона 
+      if(motorSpeed > SPEED_MIN)
+      {
+        #ifdef VERSION == 11
+          beep(NOTE_F, 50);
+          beep(NOTE_A, 50);
+          noTone(BUZZER_CH);
+        #endif
+        #ifdef VERSION == 10
+          beep(2, 50);
+        #endif
+      }
+      else
+      {        
+        #ifdef VERSION == 11
+          beep(NOTE_A, 100);
+          beep(NOTE_A, 50);
+          beep(NOTE_A, 100);
+          noTone(BUZZER_CH);
+        #endif
+        #ifdef VERSION == 10
+          beep(2, 50);
+        #endif
+      }
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case PLOW_SWITCH:
@@ -606,12 +668,14 @@ bool workFSM()    // рабочий режим
       }
       setDisplayState(EYE_DIFFICULT);    
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
      case PLANT_ACTIVATION:
       setDisplayState(EYE_DIFFICULT); 
       plantActivate();
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case BUCKET_UP:
@@ -621,6 +685,7 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_CH, 0, bucketPulseLen);
       setDisplayState(EYE_DIFFICULT);  
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case BUCKET_DOWN:
@@ -630,6 +695,7 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_CH, 0, bucketPulseLen);
       setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case BUCKET_GRAB_CLAMP:
@@ -639,6 +705,7 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_GRAB_CH, 0, bucketGrabPulseLen);
       setDisplayState(EYE_DIFFICULT);  
       standIdleTimer = millis();
+      state = LEAD;
       break;
 
     case BUCKET_GRAB_LOOSE:
@@ -648,6 +715,7 @@ bool workFSM()    // рабочий режим
       pwm.setPWM(SERVO_BUCKET_GRAB_CH, 0, bucketGrabPulseLen);
       setDisplayState(EYE_DIFFICULT);   
       standIdleTimer = millis();
+      state = LEAD;
       break;
       
     case EXIT:
@@ -668,7 +736,6 @@ bool workFSM()    // рабочий режим
       state = LEAD;
       return true;
   }
-  state = LEAD;
   return false;
 }
 
@@ -690,17 +757,18 @@ void setup()
   readServoRange();   // чтение границ серв из епрома и запись в глобальные переменные
 
   //мелодия включения
-#if VERSION == 11
-  beep(NOTE_C, 400);
-  beep(NOTE_E, 350);
-  beep(NOTE_G, 150);
-  beep(NOTE_B, 400);
-  noTone(BUZZER_CH);
-#endif
-#if VERSION == 10
-  beep(1, 500);
-#endif
+  #if VERSION == 11
+    beep(NOTE_C, 400);
+    beep(NOTE_E, 350);
+    beep(NOTE_G, 150);
+    beep(NOTE_B, 400);
+    noTone(BUZZER_CH);
+  #endif
+  #if VERSION == 10
+    beep(1, 500);
+  #endif
 
+  Serial.begin(9600);
   analogReference(EXTERNAL);  // настройка опорного напряжения для АЦП: внешний источник на выводе AREF
     
   standIdleTimer = millis(); // запомнить время последнего действия
@@ -750,16 +818,16 @@ void loop()
         if((millis() - lastBeepTime) > TIME_BEEP_CYCLE) // если прошло достаточно времени
         {        
           lastBeepTime = millis();
-#ifdef VERSION == 11
-          beep(NOTE_B, 400);
-          beep(NOTE_G, 350);
-          beep(NOTE_E, 150);
-          beep(NOTE_C, 400);
-          noTone(BUZZER_CH);
-#endif
-#ifdef VERSION == 10
-          beep(2, 100);
-#endif
+          #ifdef VERSION == 11
+            beep(NOTE_B, 400);
+            beep(NOTE_G, 350);
+            beep(NOTE_E, 150);
+            beep(NOTE_C, 400);
+            noTone(BUZZER_CH);
+          #endif
+          #ifdef VERSION == 10
+            beep(2, 100);
+          #endif
         }
       }
       delay(10);

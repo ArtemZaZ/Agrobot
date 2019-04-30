@@ -768,7 +768,6 @@ void setup()
     beep(1, 500);
   #endif
 
-  Serial.begin(9600);
   analogReference(EXTERNAL);  // настройка опорного напряжения для АЦП: внешний источник на выводе AREF
     
   standIdleTimer = millis(); // запомнить время последнего действия
